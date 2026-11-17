@@ -72,8 +72,9 @@ const TABLE_GAP = 6
 const MIN_ROOM_W = (DESK_W + STOOL_W + 1) * 2 + PAD * 2 + GLASS * 2
 const COMMON_H = 34
 const WALK_SPEED = 1.5 // art pixels per frame
-const TELEPORT_OUT_FRAMES = 3
-const TELEPORT_IN_FRAMES = 3
+// The frame loop runs at 125 ms: eight frames make each half of the teleport exactly one second.
+const TELEPORT_OUT_FRAMES = 8
+const TELEPORT_IN_FRAMES = 8
 // Pixel scale, CSS pixels per art pixel. The office grows to the biggest scale at which the whole
 // building still fits the panel, so it fills a tall or wide panel instead of stopping at its own
 // height; it never drops below the width's minimum, so a crowded office scrolls as before.
@@ -844,17 +845,45 @@ function stepWalkers() {
   }
 }
 
-/** Pixel sparks that make a break-to-desk return read as a teleport, not a walk. */
+/** A hard-edged pixel portal that makes a break-to-desk return read as a teleport, not a walk. */
 function teleportEffect(p, x, y, frame, mode) {
-  const radius = mode === 'teleport-out' ? 1 + frame : Math.max(1, 4 - frame)
-  const color = mode === 'teleport-out' ? C.blue : C.green
-  p(x + 3 - radius, y + 3, 1, 4, color)
-  p(x + 3 + radius, y + 3, 1, 4, color)
-  p(x + 3, y + 1 - radius, 2, 1, color)
-  p(x + 3, y + 8 + radius, 2, 1, color)
-  if (frame % 2 === 0) {
-    p(x + 1, y - radius, 1, 1, color)
-    p(x + 7, y + 10 + radius, 1, 1, color)
+  const departure = mode === 'teleport-out'
+  const progress = departure ? frame : TELEPORT_IN_FRAMES - 1 - frame
+  const radius = 4 + Math.min(8, progress)
+  const span = 2 + Math.min(4, Math.floor(progress / 2))
+  const cx = x + 4
+  const cy = y + 7
+  const color = departure ? C.blue : C.green
+  const highlight = C.white
+  const left = cx - radius
+  const right = cx + radius
+  const top = cy - radius
+  const bottom = cy + radius
+
+  // Four opaque corner brackets expand on departure and contract on arrival. No alpha or blur is
+  // used, so this stays crisp at the panel's pixel scale and cannot flash the whole canvas.
+  p(left, top, span, 1, color)
+  p(right - span + 1, top, span, 1, color)
+  p(left, bottom, span, 1, color)
+  p(right - span + 1, bottom, span, 1, color)
+  p(left, top, 1, span, color)
+  p(right, top, 1, span, color)
+  p(left, bottom - span + 1, 1, span, color)
+  p(right, bottom - span + 1, 1, span, color)
+
+  // A square pulse makes the midpoint legible even when the worker is small on a tall panel.
+  if (progress % 3 === 1) {
+    p(cx - 1, top + 2, 2, radius * 2 - 3, highlight)
+    p(left + 2, cy - 1, radius * 2 - 3, 2, highlight)
+  }
+
+  // Fixed, opaque fragments give the effect a discrete pixel-art rhythm rather than a fade.
+  if (progress % 2 === 0) {
+    p(left - 2, cy - 1, 2, 2, highlight)
+    p(right + 1, cy + 2, 2, 1, highlight)
+  } else {
+    p(cx - 1, top - 2, 2, 1, highlight)
+    p(cx + 3, bottom + 1, 1, 2, highlight)
   }
 }
 
@@ -1449,7 +1478,10 @@ function loftPeople() {
       m.paint = (p) => sitting(p, chair, seat.staff, tick, talking)
     }
     else m.paint = (p) => {
-      standing(p, x, y, seat.staff, tick, w.path.length > 0, w.left)
+      // Let the portal own the last departure frames and first arrival frames. The hard cut makes
+      // the disappearance/reappearance readable without introducing opacity or a screen-wide flash.
+      const visible = w.mode === 'teleport-out' ? w.warp < 5 : w.warp >= 3
+      if (visible) standing(p, x, y, seat.staff, tick, w.path.length > 0, w.left)
       if (w.mode.startsWith('teleport')) teleportEffect(p, x, y, w.warp, w.mode)
     }
     people.push(m)
