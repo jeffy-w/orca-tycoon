@@ -1487,6 +1487,10 @@ function drawLoftScene() {
 }
 
 function draw() {
+  // The animation timer can run before the first worker snapshot and before ResizeObserver has
+  // established a layout. Keep that startup frame blank instead of throwing every 125 ms and
+  // leaving the renderer with a black canvas.
+  if (!snapshot || !layout.building) return
   if (loft()) {
     drawLoftScene()
     drawSelection()
