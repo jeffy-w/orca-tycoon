@@ -117,20 +117,37 @@ const ctx = canvas.getContext('2d')
 const tooltip = document.getElementById('tooltip')
 const dpr = () => window.devicePixelRatio || 1
 
-// Two looks: Brick, the original flat office seen from straight above, and Loft, seen from the
-// front and above with the real office's curtained rooms and desk islands. The choice is kept.
-const THEMES = ['brick', 'loft']
-const THEME_KEY = 'office-tycoon.theme'
-const RENAMED = { classic: 'brick', dollhouse: 'loft' } // what the looks were called before
-let theme = 'loft' // a saved choice wins; a new viewer starts in the loft
+// The layout and appearance are independent choices. Dark is persisted separately so it can be
+// applied to either layout without changing it.
+const LAYOUTS = ['brick', 'loft']
+const THEME_KEY = 'office-tycoon.theme' // kept for compatibility: this key now stores the layout
+const DARK_KEY = 'office-tycoon.dark'
+const RENAMED = { classic: 'brick', dollhouse: 'loft', orbital: 'loft' } // what the layouts were called before
+let layoutTheme = 'loft' // a saved choice wins; a new viewer starts in the loft
+let dark = false
 try {
   const saved = localStorage.getItem(THEME_KEY)
-  const name = RENAMED[saved] ?? saved
-  if (THEMES.includes(name)) theme = name
+  if (saved === 'dark') {
+    // Older releases stored Dark as a layout. Migrate it to the default layout plus the attribute.
+    layoutTheme = 'loft'
+    dark = true
+    localStorage.setItem(THEME_KEY, layoutTheme)
+    localStorage.setItem(DARK_KEY, 'true')
+  } else {
+    const name = RENAMED[saved] ?? saved
+    if (LAYOUTS.includes(name)) layoutTheme = name
+    dark = localStorage.getItem(DARK_KEY) === 'true'
+  }
 } catch {
-  // no storage in this frame: start in the loft every time
+  // no storage in this frame: use the defaults for this session
 }
-const loft = () => theme === 'loft'
+const loft = () => layoutTheme === 'loft'
+
+function applyDark() {
+  document.documentElement.dataset.dark = String(dark)
+  document.body?.setAttribute('data-dark', String(dark))
+}
+applyDark()
 
 // Christmas dresses either look from 15 Nov through 1 Jan: the tree button shows only then, on by
 // default, and a viewer who turns it off keeps it off.
@@ -450,19 +467,20 @@ function fitLoft(cssW, cssH, perPx) {
   for (let n = MAX_SCALE * perPx; n / perPx >= minScale; n--) {
     const scale = n / perPx
     if (Math.floor(cssW / scale) < LOFT_MIN_W && scale > minScale) continue
-    const fit = layoutLoft(snapshot, cssW, scale, helpers)
     const rows = Math.floor(cssH / scale)
+    const fit = layoutLoft(snapshot, cssW, scale, helpers, rows)
     if (fit.artH <= rows) {
       fit.artH = fit.building.h = rows
       return fit
     }
   }
   // too tall for the panel at any scale: it scrolls, so leave room for the scrollbar across
-  return layoutLoft(snapshot, cssW - SCROLLBAR, minScale, helpers)
+  return layoutLoft(snapshot, cssW - SCROLLBAR, minScale, helpers, Math.floor(cssH / minScale))
 }
 
 function resize() {
   layout = fitLayout()
+  layout.dark = dark
   const w = Math.round(layout.artW * layout.scale * dpr())
   const h = Math.round(layout.artH * layout.scale * dpr())
   // Only touch the backing size when it changes: assigning it clears the canvas. The CSS size
@@ -482,11 +500,13 @@ function artTransform() {
   const k = layout.scale * dpr()
   ctx.setTransform(k, 0, 0, k, 0, 0)
   ctx.imageSmoothingEnabled = false
+  ctx.filter = dark ? 'brightness(0.68) saturate(0.78) hue-rotate(8deg)' : 'none'
 }
 
 function cssTransform() {
   const d = dpr()
   ctx.setTransform(d, 0, 0, d, 0, 0)
+  ctx.filter = 'none'
 }
 
 function drawBuilding(p) {
@@ -1776,12 +1796,12 @@ canvas.addEventListener('click', (event) => {
   draw()
 })
 
-/** Switches the look: everyone is placed afresh in the new office, nobody walks across. */
-function setTheme(next) {
-  if (!THEMES.includes(next) || next === theme) return
-  theme = next
+/** Switches the layout: everyone is placed afresh in the new office, nobody walks across. */
+function setLayout(next) {
+  if (!LAYOUTS.includes(next) || next === layoutTheme) return
+  layoutTheme = next
   try {
-    localStorage.setItem(THEME_KEY, theme)
+    localStorage.setItem(THEME_KEY, layoutTheme)
   } catch {
     // kept for this session only
   }
@@ -1798,11 +1818,37 @@ function setTheme(next) {
   resize()
 }
 
-function renderThemes() {
-  for (const button of document.querySelectorAll('#themes button')) button.setAttribute('aria-pressed', String(button.dataset.theme === theme))
+function setDark(next) {
+  const value = next === true || next === 'true'
+  if (value === dark) return
+  dark = value
+  try {
+    localStorage.setItem(DARK_KEY, String(dark))
+  } catch {
+    // kept for this session only
+  }
+  applyDark()
+  renderThemes()
+  renderDetail()
+  layout.dark = dark
+  draw()
 }
 
-for (const button of document.querySelectorAll('#themes button')) button.addEventListener('click', () => setTheme(button.dataset.theme))
+function renderThemes() {
+  for (const button of document.querySelectorAll('#themes button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.layout === layoutTheme))
+  }
+  const darkButton = document.querySelector('#dark-toggle button')
+  if (darkButton) {
+    darkButton.setAttribute('aria-pressed', String(dark))
+    darkButton.textContent = dark ? '☾' : '☀'
+    darkButton.setAttribute('aria-label', dark ? 'Use light appearance' : 'Use dark appearance')
+    darkButton.setAttribute('title', dark ? 'Use light appearance' : 'Use dark appearance')
+  }
+}
+
+for (const button of document.querySelectorAll('#themes button')) button.addEventListener('click', () => setLayout(button.dataset.layout))
+document.querySelector('#dark-toggle button')?.addEventListener('click', () => setDark(!dark))
 renderThemes()
 
 async function poll() {
