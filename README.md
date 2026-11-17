@@ -49,7 +49,7 @@ on your `PATH`.
   the sofa (done and idle agents only), a coffee or a book on the sofa, a mug at the coffee corner,
   a game of foosball (always two players, one on each long side), or a call in a booth. When a
   place is full they take their next choice, and when everything is full they stay at their desk.
-  When an agent gets new work, it walks back and sits down.
+  When an agent gets new work, it flashes out of the hangout and teleports back to its desk.
 - **Palú is the office dog.** A white, fluffy, long and low bichon with a little stub of a tail
   and a red collar. He wanders the floor, sniffs the plants, the bookshelves and the corners of
   the furniture, visits his food and water bowls, naps in his bed in the commons, and now and

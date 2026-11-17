@@ -72,6 +72,8 @@ const TABLE_GAP = 6
 const MIN_ROOM_W = (DESK_W + STOOL_W + 1) * 2 + PAD * 2 + GLASS * 2
 const COMMON_H = 34
 const WALK_SPEED = 1.5 // art pixels per frame
+const TELEPORT_OUT_FRAMES = 3
+const TELEPORT_IN_FRAMES = 3
 // Pixel scale, CSS pixels per art pixel. The office grows to the biggest scale at which the whole
 // building still fits the panel, so it fills a tall or wide panel instead of stopping at its own
 // height; it never drops below the width's minimum, so a crowded office scrolls as before.
@@ -186,7 +188,7 @@ let selected = null // seat key, or a specialist's visitor key (`seat key|specia
 let tick = 0
 const lastState = new Map() // seat key -> state, to pop a bubble when it changes
 const bubbles = new Map() // seat key -> { text, until }
-const walkers = new Map() // seat key -> { x, y, path, mode: 'out' | 'away' | 'back' }
+const walkers = new Map() // seat key -> { x, y, path, mode: 'out' | 'away' | 'back' | 'teleport-*' }
 const visitors = new Map() // specialist key -> { spec, x, y, path, mode: 'in' | 'seated' | 'out' }
 // False until the first snapshot has been placed. Whatever that snapshot shows is already true when
 // the panel opens, so it is drawn in place; only changes seen after it are walked.
@@ -631,7 +633,12 @@ function movers() {
   }
   for (const seat of layout.seats) {
     const w = walkers.get(seat.key)
-    if (w?.path.length) person(seat.key, w.x, w.y, (at) => walker(at, seat.staff, tick, true, w.left))
+    if (w && (w.path.length || w.mode.startsWith('teleport'))) {
+      person(seat.key, w.x, w.y, (at) => {
+        walker(at, seat.staff, tick, w.path.length > 0, w.left)
+        if (w.mode.startsWith('teleport')) teleportEffect(at, 0, 0, w.warp, w.mode)
+      })
+    }
   }
   for (const [key, v] of visitors) {
     if (v.mode !== 'seated' && !(v.wait > 0)) person(key, v.x, v.y, (at) => walker(at, v.spec, tick, true, v.left, roleColor(v.spec.role)))
@@ -781,6 +788,11 @@ function stepWalkers() {
       const home = homeOf(seat)
       w = { ...home, path: walkPath(home, spot), mode: 'out', spot, activity }
       walkers.set(seat.key, w)
+    } else if (spot && w && w.mode.startsWith('teleport')) {
+      // A quick state reversal cancels the teleport and sends the agent back to the break spot.
+      w.path = walkPath(w, spot)
+      w.mode = 'out'
+      w.spot = spot
     } else if (spot && w && w.mode !== 'back' && (w.spot.x !== spot.x || w.spot.y !== spot.y)) {
       // a new spot in the band (the corner reshuffled, or coffee turned into a nap)
       w.path = walkPath(w, spot)
@@ -790,6 +802,28 @@ function stepWalkers() {
       w.path = walkPath(w, spot)
       w.mode = 'out'
       w.spot = spot
+    } else if (!spot && w && w.mode === 'away') {
+      // Returning from leisure is a teleport: collapse at the break spot, then reappear at the desk.
+      w.home = homeOf(seat)
+      w.path = []
+      w.mode = 'teleport-out'
+      w.warp = 0
+    } else if (!spot && w && w.mode === 'teleport-out') {
+      w.warp++
+      if (w.warp >= TELEPORT_OUT_FRAMES) {
+        const fromX = w.x
+        w.x = w.home.x
+        w.y = w.home.y
+        w.left = w.home.x < fromX ? true : w.home.x > fromX ? false : w.left
+        w.mode = 'teleport-in'
+        w.warp = 0
+      }
+    } else if (!spot && w && w.mode === 'teleport-in') {
+      if (w.warp >= TELEPORT_IN_FRAMES) {
+        walkers.delete(seat.key)
+        continue
+      }
+      w.warp++
     } else if (!spot && w && w.mode !== 'back') {
       w.path = walkPath(w, homeOf(seat))
       w.mode = 'back'
@@ -806,6 +840,20 @@ function stepWalkers() {
     } else if (w.mode === 'back') {
       walkers.delete(seat.key)
     }
+  }
+}
+
+/** Pixel sparks that make a break-to-desk return read as a teleport, not a walk. */
+function teleportEffect(p, x, y, frame, mode) {
+  const radius = mode === 'teleport-out' ? 1 + frame : Math.max(1, 4 - frame)
+  const color = mode === 'teleport-out' ? C.blue : C.green
+  p(x + 3 - radius, y + 3, 1, 4, color)
+  p(x + 3 + radius, y + 3, 1, 4, color)
+  p(x + 3, y + 1 - radius, 2, 1, color)
+  p(x + 3, y + 8 + radius, 2, 1, color)
+  if (frame % 2 === 0) {
+    p(x + 1, y - radius, 1, 1, color)
+    p(x + 7, y + 10 + radius, 1, 1, color)
   }
 }
 
@@ -1399,7 +1447,10 @@ function loftPeople() {
       m.base = chair.y + 11 + (chair.facing ? 0.5 : -0.5)
       m.paint = (p) => sitting(p, chair, seat.staff, tick, talking)
     }
-    else m.paint = (p) => standing(p, x, y, seat.staff, tick, w.path.length > 0, w.left)
+    else m.paint = (p) => {
+      standing(p, x, y, seat.staff, tick, w.path.length > 0, w.left)
+      if (w.mode.startsWith('teleport')) teleportEffect(p, x, y, w.warp, w.mode)
+    }
     people.push(m)
   }
   for (const [key, v] of visitors) {
@@ -1475,7 +1526,12 @@ function draw() {
     if (kind === 'lounge') paint = () => lounger(at, seat.staff, tick, w.activity.pose)
     else if (kind === 'booth') paint = () => walker(at, seat.staff, tick, false, w.left, null, 'phone')
     else if (kind === 'foosball') paint = () => walker(at, seat.staff, tick, false, w.left, null, w.spot.back ? 'playBack' : 'play')
-    else paint = () => walker(at, seat.staff, tick, w.path.length > 0, w.left)
+    else {
+      paint = () => {
+        walker(at, seat.staff, tick, w.path.length > 0, w.left)
+        if (w.mode.startsWith('teleport')) teleportEffect(at, 0, 0, w.warp, w.mode)
+      }
+    }
     scene.push({ base: Math.round(w.y) + 15, inBooth: kind === 'booth', paint })
   }
   for (const [key, v] of visitors) {
