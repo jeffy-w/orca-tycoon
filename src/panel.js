@@ -148,6 +148,7 @@ const loft = () => layoutTheme === 'loft'
 function applyDark() {
   document.documentElement.dataset.dark = String(dark)
   document.body?.setAttribute('data-dark', String(dark))
+  canvas.style.filter = dark ? 'brightness(0.68) saturate(0.78) hue-rotate(8deg)' : 'none'
 }
 applyDark()
 
@@ -502,7 +503,7 @@ function artTransform() {
   const k = layout.scale * dpr()
   ctx.setTransform(k, 0, 0, k, 0, 0)
   ctx.imageSmoothingEnabled = false
-  ctx.filter = dark ? 'brightness(0.68) saturate(0.78) hue-rotate(8deg)' : 'none'
+  ctx.filter = 'none'
 }
 
 function cssTransform() {
