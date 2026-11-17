@@ -136,13 +136,22 @@ export function layoutLoft(snapshot, cssW, scale, helpers, targetH = null) {
   for (let i = 0; i < small.length; i += 2) roomPlans.push(small.slice(i, i + 2).map((t) => t[0]))
   const contentH = (plan) => plan.reduce((n, t) => n + t.h, 0)
 
-  // Rows of rooms, then the row that puts the hangout halfway: half the rooms above it, half below,
-  // so nobody walks far for a coffee.
+  // Rows of rooms. When the panel is taller than the natural floor plan, the extra height is
+  // distributed across these rows so each office can center its workstations vertically.
   const bands = []
   for (let b = 0; b < roomPlans.length; b += cols) {
     const band = roomPlans.slice(b, b + cols)
     bands.push({ band, h: 26 + Math.max(...band.map(contentH)) })
   }
+  const naturalWorkH = bands.reduce((sum, band) => sum + band.h, 0)
+  const naturalCommon = hangout(x0, WALL + naturalWorkH + 8, floorW)
+  const naturalH = naturalCommon.y + naturalCommon.h + 6
+  const extraWorkH = Math.max(0, (targetH ?? naturalH) - naturalH)
+  const perBand = bands.length ? Math.floor(extraWorkH / bands.length) : 0
+  const remainder = bands.length ? extraWorkH % bands.length : 0
+  bands.forEach((band, i) => {
+    band.h += perBand + (i < remainder ? 1 : 0)
+  })
   const rooms = []
   const seats = []
   const lines = [] // curtain lines: the floor row each one stands on
@@ -154,7 +163,8 @@ export function layoutLoft(snapshot, cssW, scale, helpers, targetH = null) {
     const bottom = top + bands[b].h
     bands[b].band.forEach((plan, c) => {
       const room = { x: colX[c], y: top, w: colW, h: bottom - top, name: plan.map((t) => t.floor.repo).join(' · '), first: top === WALL, islands: [] }
-      let cursor = top
+      const contentOffset = Math.floor((room.h - (26 + contentH(plan))) / 2)
+      let cursor = top + contentOffset
       for (const team of plan) {
         const ref = { name: team.floor.repo }
         const isles = []
@@ -218,10 +228,6 @@ export function layoutLoft(snapshot, cssW, scale, helpers, targetH = null) {
   }
   common = hangout(x0, top + 8, floorW)
   let h = common.y + common.h + 6
-  if (targetH && targetH > h) {
-    shiftHangout(common, targetH - h)
-    h = targetH
-  }
   // The last curtain is the leisure area's own bulkhead. Keep it attached to the module when the
   // module docks to the bottom of a tall panel; the earlier lines remain workstation separators.
   if (lines.length) lines[lines.length - 1] = common.y
@@ -347,18 +353,6 @@ function finish(c, { booths, counter, sofa, foos, chairs }) {
   // Palú wanders along the hangout's last row
   c.laneTop = c.y + c.h - 30
   c.laneBottom = c.y + c.h - 22
-}
-
-/** Move the fixed-height leisure module without stretching its furniture. */
-function shiftHangout(c, delta) {
-  c.y += delta
-  for (const key of ['doorY', 'laneTop', 'laneBottom']) if (typeof c[key] === 'number') c[key] += delta
-  for (const point of [c.bed, c.bowls]) if (point) point.y += delta
-  for (const list of [c.things, c.table, c.booths, c.spots, c.sofa, c.foos]) {
-    for (const item of list ?? []) {
-      for (const key of ['y', 'floor', 'base']) if (typeof item[key] === 'number') item[key] += delta
-    }
-  }
 }
 
 // ---- where people stand, for the panel's walking ------------------------------------------------

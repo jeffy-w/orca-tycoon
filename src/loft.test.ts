@@ -112,6 +112,16 @@ test('the fixed-height leisure module can dock to the bottom of a tall panel', (
   assert.equal(layout.common.y + layout.common.h + 6, 400)
 })
 
+test('a tall office centers a single workstation row vertically', () => {
+  const compact = layoutLoft(office({ a: [desk('a', 1)] }), LOFT_MIN_W * 3, 3, helpers)
+  const tall = layoutLoft(office({ a: [desk('a', 1)] }), LOFT_MIN_W * 3, 3, helpers, 400)
+  const room = tall.rooms[0]
+  const island = room.islands[0]
+  assert.ok(room.h > compact.rooms[0].h)
+  assert.equal(island.y - room.y, 14 + Math.floor((room.h - compact.rooms[0].h) / 2))
+  assert.equal(tall.common.y + tall.common.h + 6, 400)
+})
+
 test('on a narrow floor the hangout leaves the walkway by the right wall clear', () => {
   const layout = layoutLoft(office({ a: [desk('a', 1)], b: [desk('b', 1)] }), LOFT_MIN_W * 3, 3, helpers)
   const { spineX } = layout.building
