@@ -49,7 +49,7 @@ on your `PATH`.
   the sofa (done and idle agents only), a coffee or a book on the sofa, a mug at the coffee corner,
   a game of foosball (always two players, one on each long side), or a call in a booth. When a
   place is full they take their next choice, and when everything is full they stay at their desk.
-  When an agent gets new work, it walks back and sits down.
+  When an agent gets new work, it flashes out of the hangout and teleports back to its desk.
 - **Palú is the office dog.** A white, fluffy, long and low bichon with a little stub of a tail
   and a red collar. He wanders the floor, sniffs the plants, the bookshelves and the corners of
   the furniture, visits his food and water bowls, naps in his bed in the commons, and now and
@@ -63,17 +63,20 @@ on your `PATH`.
 
 A status line along the top counts teams, staff, busy agents and how many need you.
 
-## Two looks
+## Two layouts, two appearances
 
-The switch in the top right corner picks how the office looks, and the panel remembers it. The
-office opens in the Loft until you pick Brick.
+The Layout control picks the floor plan and the panel remembers it. The separate Appearance
+control toggles Dark for any layout. The office opens in the Loft with Dark off.
 
 - **Loft** shows the office from the front and above, like a doll's house with its front wall
-  taken off. It is set up like a real office in an old concrete hall: tall steel windows onto a garden
-  at the far end, each team in a room closed off by navy curtains, and the hangout in the middle with
-  phone booths, a coffee counter, a sofa on a pink rug, foosball and a high table.
+  taken off. It is set up like a real office in an old concrete hall: a double-height window that
+  changes between blue sky and a moonlit star field, one-row workstation bays with their monitors
+  always in place, and a fixed-height hangout docked at the bottom.
 - **Brick** is the flat office seen from straight above, as in the screenshot below and the
   pictures further down.
+- **Dark** is an appearance attribute rather than a layout. It adds the low-light, low-saturation
+  treatment to Brick or Loft while keeping status colors readable. Use the compact moon/sun button
+  beside the layout switch.
 
 ![Brick: five teams at their desks on rugs, specialists on stools beside their agents, and a commons band in the middle with the lounge, coffee corner, foosball table, calling booths and Palú asleep in his bed](docs/brick.png)
 

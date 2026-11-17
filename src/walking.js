@@ -435,8 +435,13 @@ function walkOn(who, speed) {
  * mode and what it does there change together, only once the route is there, so nobody is ever
  * drawn doing one thing at another thing's place; until then it waits where it is (`planning`).
  * Returns the walk, or undefined while it sits at its desk or once it is back there.
+ *
+ * With `teleport` (`{ out, in }`, frames each way), an agent called back from its spot does not walk:
+ * it fades out there (`teleport-out`), then appears at its desk (`teleport-in`), counting `warp`.
+ * Called out again meanwhile, it walks to the spot from wherever it stands.
  */
-export function breakWalk(w, { spot, activity, home, primed }, route, speed) {
+export function breakWalk(w, { spot, activity, home, primed }, route, speed, teleport = null) {
+  if (w?.mode?.startsWith('teleport') && !spot) return warpHome(w, home, teleport)
   if (!w) {
     if (!spot) return undefined
     // already on a break when the panel opened
@@ -444,7 +449,7 @@ export function breakWalk(w, { spot, activity, home, primed }, route, speed) {
     const path = route(home, spot)
     if (!path) return undefined
     w = { ...home, path, mode: 'out', spot, activity, planning: false }
-  } else if (spot && (w.mode === 'back' || w.spot.x !== spot.x || w.spot.y !== spot.y)) {
+  } else if (spot && (w.mode === 'back' || w.mode.startsWith('teleport') || w.spot.x !== spot.x || w.spot.y !== spot.y)) {
     // a new spot in the band (the corner reshuffled, or coffee turned into a nap), or called back
     // out on the way to the desk
     const path = route(w, spot)
@@ -453,6 +458,9 @@ export function breakWalk(w, { spot, activity, home, primed }, route, speed) {
   } else if (spot) {
     w.planning = false
     w.activity = activity
+  } else if (teleport && w.mode === 'away') {
+    Object.assign(w, { path: [], mode: 'teleport-out', warp: 0, activity: null, planning: false })
+    return w
   } else if (w.mode !== 'back') {
     const path = route(w, home)
     w.planning = !path
@@ -464,6 +472,16 @@ export function breakWalk(w, { spot, activity, home, primed }, route, speed) {
     w.left = w.spot.left ?? false
   }
   return w.mode === 'back' ? undefined : w
+}
+
+/** A frame of the teleport home: out at the spot, then in at the desk; undefined once it is there. */
+function warpHome(w, home, teleport) {
+  w.warp++
+  if (w.mode === 'teleport-out' && w.warp >= teleport.out) {
+    w.left = home.x < w.x ? true : home.x > w.x ? false : w.left
+    Object.assign(w, { x: home.x, y: home.y, mode: 'teleport-in', warp: 0 })
+  } else if (w.mode === 'teleport-in' && w.warp > teleport.in) return undefined
+  return w
 }
 
 /**

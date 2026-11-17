@@ -319,6 +319,40 @@ test('an agent gets up from its desk, or heads back to it, only once the way is 
   assert.equal(w.activity, null)
 })
 
+test('with teleport, an agent called back from a break fades out at its spot and in at its desk, no route', () => {
+  const spot = { x: 10, y: 50 }
+  const home = { x: 30, y: 10 }
+  const teleport = { out: 2, in: 2 }
+  const route = () => {
+    throw new Error('no route on the way home')
+  }
+  const w = breakWalk(undefined, { spot, activity: { kind: 'coffee' }, home, primed: false }, route, 0, teleport)
+  const back = { spot: undefined, activity: null, home, primed: true }
+  breakWalk(w, back, route, 0, teleport)
+  assert.equal(w?.mode, 'teleport-out')
+  assert.deepEqual([w?.x, w?.y], [10, 50])
+  breakWalk(w, back, route, 0, teleport)
+  breakWalk(w, back, route, 0, teleport)
+  assert.equal(w?.mode, 'teleport-in')
+  assert.deepEqual([w?.x, w?.y], [30, 10])
+  assert.equal(breakWalk(w, back, route, 0, teleport), w)
+  assert.equal(breakWalk(w, back, route, 0, teleport), w)
+  assert.equal(breakWalk(w, back, route, 0, teleport), undefined)
+})
+
+test('called out again mid-teleport, the agent walks to its spot from where it stands', () => {
+  const spot = { x: 10, y: 50 }
+  const home = { x: 30, y: 10 }
+  const teleport = { out: 2, in: 2 }
+  const route = (from: { x: number; y: number }, to: { x: number; y: number }) => [{ ...to }]
+  const w = breakWalk(undefined, { spot, activity: { kind: 'coffee' }, home, primed: false }, route, 0, teleport)
+  breakWalk(w, { spot: undefined, activity: null, home, primed: true }, route, 0, teleport)
+  assert.equal(w?.mode, 'teleport-out')
+  breakWalk(w, { spot, activity: { kind: 'coffee' }, home, primed: true }, route, 0, teleport)
+  assert.equal(w?.mode, 'out')
+  assert.deepEqual(w?.activity, { kind: 'coffee' })
+})
+
 // A room with one big desk in the middle: going from its left side to its right side means going
 // round its bottom edge.
 const DESK: Box = [60, 40, 40, 60]

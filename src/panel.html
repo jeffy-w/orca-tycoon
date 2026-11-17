@@ -4,8 +4,11 @@
     <meta charset="utf-8" />
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: light;
         --pad: 10px;
+      }
+      :root[data-dark='true'] {
+        color-scheme: dark;
       }
       * {
         box-sizing: border-box;
@@ -16,9 +19,25 @@
         height: 100vh;
         display: flex;
         flex-direction: column;
-        background: var(--orca-background, #15131f);
-        color: var(--orca-foreground, #e8e6f0);
+        background: var(--panel-background, var(--orca-background, #15131f));
+        color: var(--panel-foreground, var(--orca-foreground, #e8e6f0));
         font: 12px/1.35 ui-monospace, 'SF Mono', Menlo, monospace;
+        --panel-background: #f7f5ef;
+        --panel-foreground: #2a2633;
+        --panel-muted: #6f6a7a;
+        --panel-border: #b8b0a4;
+        --panel-primary: #5f57c9;
+        --panel-popover: #fffdf8;
+        --panel-popover-foreground: #2a2633;
+      }
+      body[data-dark='true'] {
+        --panel-background: #15131f;
+        --panel-foreground: #e8e6f0;
+        --panel-muted: #9a97a8;
+        --panel-border: #3a3650;
+        --panel-primary: #8e86ff;
+        --panel-popover: #221f30;
+        --panel-popover-foreground: #e8e6f0;
       }
       header {
         display: flex;
@@ -34,33 +53,50 @@
         letter-spacing: 0.04em;
       }
       .stats {
-        color: var(--orca-muted-foreground, #9a97a8);
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
       }
-      /* Brick or loft: two buttons that read as one switch. */
+      /* Layout and appearance are separate controls. */
       .themes {
         display: inline-flex;
-        margin-left: auto;
-        border: 2px solid var(--orca-muted, #3a3650);
+        margin-left: 6px;
+        border: 2px solid var(--panel-border, var(--orca-muted, #3a3650));
       }
       .themes button {
         padding: 1px 8px;
         background: transparent;
-        color: var(--orca-muted-foreground, #9a97a8);
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
         border: 0;
         font: inherit;
         cursor: pointer;
       }
       .themes button[aria-pressed='true'] {
-        background: var(--orca-muted, #3a3650);
-        color: var(--orca-foreground, #e8e6f0);
+        background: var(--panel-border, var(--orca-muted, #3a3650));
+        color: var(--panel-foreground, var(--orca-foreground, #e8e6f0));
         font-weight: 600;
       }
       .themes button:focus-visible {
-        outline: 2px solid var(--orca-primary, #8e86ff);
+        outline: 2px solid var(--panel-primary, var(--orca-primary, #8e86ff));
         outline-offset: -2px;
       }
       /* The Christmas switch, beside the looks, only in season. */
       .themes.festive {
+        margin-left: 6px;
+      }
+      /* The appearance switch mirrors the compact Christmas button. */
+      .themes.icon-toggle {
+        margin-left: 2px;
+      }
+      .themes.icon-toggle button {
+        width: 26px;
+        min-width: 26px;
+        height: 22px;
+        padding: 0;
+        font-size: 14px;
+        line-height: 1;
+      }
+      .control-label {
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
+        align-self: center;
         margin-left: 6px;
       }
       .themes[hidden] {
@@ -93,15 +129,15 @@
         right: var(--pad);
         bottom: var(--pad);
         padding: 8px 10px;
-        background: var(--orca-popover, #221f30);
-        color: var(--orca-popover-foreground, inherit);
-        border: 2px solid var(--orca-muted, #3a3650);
+        background: var(--panel-popover, var(--orca-popover, #221f30));
+        color: var(--panel-popover-foreground, var(--orca-popover-foreground, inherit));
+        border: 2px solid var(--panel-border, var(--orca-muted, #3a3650));
       }
       #detail[hidden] {
         display: none;
       }
       #detail .row {
-        color: var(--orca-muted-foreground, #9a97a8);
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
       }
       #detail .actions {
         display: flex;
@@ -112,22 +148,22 @@
       }
       #detail .open {
         padding: 3px 10px;
-        background: var(--orca-background, #15131f);
-        color: var(--orca-foreground, #e8e6f0);
-        border: 2px solid var(--orca-muted, #3a3650);
+        background: var(--panel-background, var(--orca-background, #15131f));
+        color: var(--panel-foreground, var(--orca-foreground, #e8e6f0));
+        border: 2px solid var(--panel-border, var(--orca-muted, #3a3650));
         font: inherit;
         font-weight: 600;
         cursor: pointer;
       }
       #detail .open:hover:enabled {
-        border-color: var(--orca-primary, #8e86ff);
+        border-color: var(--panel-primary, var(--orca-primary, #8e86ff));
       }
       #detail .open:disabled {
-        color: var(--orca-muted-foreground, #9a97a8);
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
         cursor: default;
       }
       #detail .note {
-        color: var(--orca-muted-foreground, #9a97a8);
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
       }
       #tooltip {
         position: fixed;
@@ -135,9 +171,9 @@
         pointer-events: none;
         z-index: 1000;
         padding: 6px 10px;
-        background: var(--orca-popover, #221f30);
-        color: var(--orca-popover-foreground, inherit);
-        border: 1px solid var(--orca-muted, #3a3650);
+        background: var(--panel-popover, var(--orca-popover, #221f30));
+        color: var(--panel-popover-foreground, var(--orca-popover-foreground, inherit));
+        border: 1px solid var(--panel-border, var(--orca-muted, #3a3650));
         font-size: 11px;
         line-height: 1.45;
         max-width: 300px;
@@ -148,11 +184,11 @@
         margin-bottom: 2px;
       }
       #tooltip .muted {
-        color: var(--orca-muted-foreground, #9a97a8);
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
       }
       .empty,
       .error {
-        color: var(--orca-muted-foreground, #9a97a8);
+        color: var(--panel-muted, var(--orca-muted-foreground, #9a97a8));
         padding: 16px 0;
       }
     </style>
@@ -161,9 +197,13 @@
     <header>
       <h1>OFFICE TYCOON</h1>
       <span class="stats" id="stats"></span>
-      <div class="themes" id="themes" role="group" aria-label="Look">
-        <button type="button" data-theme="brick">Brick</button>
-        <button type="button" data-theme="loft">Loft</button>
+      <span class="control-label">Layout</span>
+      <div class="themes" id="themes" role="group" aria-label="Layout">
+        <button type="button" data-layout="brick">Brick</button>
+        <button type="button" data-layout="loft">Loft</button>
+      </div>
+      <div class="themes icon-toggle" id="dark-toggle" role="group" aria-label="Appearance">
+        <button type="button" aria-pressed="false" aria-label="Use dark appearance" title="Use dark appearance">☀</button>
       </div>
       <div class="themes festive" id="christmas" hidden>
         <button type="button" aria-pressed="false" title="Christmas decorations">🎄</button>

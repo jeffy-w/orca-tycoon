@@ -73,6 +73,9 @@ const TABLE_GAP = 6
 const MIN_ROOM_W = (DESK_W + STOOL_W + 1) * 2 + PAD * 2 + GLASS * 2
 const COMMON_H = 34
 const WALK_SPEED = 1.5 // art pixels per frame
+// The frame loop runs at 125 ms: eight frames make each half of the teleport exactly one second.
+const TELEPORT_OUT_FRAMES = 8
+const TELEPORT_IN_FRAMES = 8
 // Pixel scale, CSS pixels per art pixel. The office grows to the biggest scale at which the whole
 // building still fits the panel, so it fills a tall or wide panel instead of stopping at its own
 // height; it never drops below the width's minimum, so a crowded office scrolls as before.
@@ -119,20 +122,38 @@ const ctx = canvas.getContext('2d')
 const tooltip = document.getElementById('tooltip')
 const dpr = () => window.devicePixelRatio || 1
 
-// Two looks: Brick, the original flat office seen from straight above, and Loft, seen from the
-// front and above with the real office's curtained rooms and desk islands. The choice is kept.
-const THEMES = ['brick', 'loft']
-const THEME_KEY = 'office-tycoon.theme'
-const RENAMED = { classic: 'brick', dollhouse: 'loft' } // what the looks were called before
-let theme = 'loft' // a saved choice wins; a new viewer starts in the loft
+// The layout and appearance are independent choices. Dark is persisted separately so it can be
+// applied to either layout without changing it.
+const LAYOUTS = ['brick', 'loft']
+const THEME_KEY = 'office-tycoon.theme' // kept for compatibility: this key now stores the layout
+const DARK_KEY = 'office-tycoon.dark'
+const RENAMED = { classic: 'brick', dollhouse: 'loft', orbital: 'loft' } // what the layouts were called before
+let layoutTheme = 'loft' // a saved choice wins; a new viewer starts in the loft
+let dark = false
 try {
   const saved = localStorage.getItem(THEME_KEY)
-  const name = RENAMED[saved] ?? saved
-  if (THEMES.includes(name)) theme = name
+  if (saved === 'dark') {
+    // Older releases stored Dark as a layout. Migrate it to the default layout plus the attribute.
+    layoutTheme = 'loft'
+    dark = true
+    localStorage.setItem(THEME_KEY, layoutTheme)
+    localStorage.setItem(DARK_KEY, 'true')
+  } else {
+    const name = RENAMED[saved] ?? saved
+    if (LAYOUTS.includes(name)) layoutTheme = name
+    dark = localStorage.getItem(DARK_KEY) === 'true'
+  }
 } catch {
-  // no storage in this frame: start in the loft every time
+  // no storage in this frame: use the defaults for this session
 }
-const loft = () => theme === 'loft'
+const loft = () => layoutTheme === 'loft'
+
+function applyDark() {
+  document.documentElement.dataset.dark = String(dark)
+  document.body?.setAttribute('data-dark', String(dark))
+  canvas.style.filter = dark ? 'brightness(0.68) saturate(0.78) hue-rotate(8deg)' : 'none'
+}
+applyDark()
 
 // Christmas dresses either look from 15 Nov through 1 Jan: the tree button shows only then, on by
 // default, and a viewer who turns it off keeps it off.
@@ -171,7 +192,7 @@ let selected = null // seat key, or a specialist's visitor key (`seat key|specia
 let tick = 0
 const lastState = new Map() // seat key -> state, to pop a bubble when it changes
 const bubbles = new Map() // seat key -> { text, until }
-const walkers = new Map() // seat key -> { x, y, path, mode: 'out' | 'away' | 'back' }
+const walkers = new Map() // seat key -> { x, y, path, mode: 'out' | 'away' | 'back' | 'teleport-*' }
 const visitors = new Map() // specialist key -> { spec, x, y, path, mode: 'in' | 'seated' | 'out' }
 // False until the first snapshot has been placed. Whatever that snapshot shows is already true when
 // the panel opens, so it is drawn in place; only changes seen after it are walked.
@@ -452,15 +473,15 @@ function fitLoft(cssW, cssH, perPx) {
   for (let n = MAX_SCALE * perPx; n / perPx >= minScale; n--) {
     const scale = n / perPx
     if (Math.floor(cssW / scale) < LOFT_MIN_W && scale > minScale) continue
-    const fit = layoutLoft(snapshot, cssW, scale, helpers)
     const rows = Math.floor(cssH / scale)
+    const fit = layoutLoft(snapshot, cssW, scale, helpers, rows)
     if (fit.artH <= rows) {
       fit.artH = fit.building.h = rows
       return fit
     }
   }
   // too tall for the panel at any scale: it scrolls, so leave room for the scrollbar across
-  return layoutLoft(snapshot, cssW - SCROLLBAR, minScale, helpers)
+  return layoutLoft(snapshot, cssW - SCROLLBAR, minScale, helpers, Math.floor(cssH / minScale))
 }
 
 /**
@@ -481,8 +502,9 @@ function wholeCss(rows) {
   return Math.abs(css - Math.round(css)) < 1e-3 ? Math.round(css) : null
 }
 
-function resize() {
+function resize(paint = true) {
   layout = fitLayout()
+  layout.dark = dark
   const w = Math.round(layout.artW * layout.scale * dpr())
   const h = Math.round(layout.artH * layout.scale * dpr())
   // The floor takes the whole office's size, so the panel scrolls over it; the canvas is only as
@@ -502,7 +524,7 @@ function resize() {
   canvas.style.height = `${shownCss}px`
   // the rows below the panel's edge must not hold the canvas off the top at the end of the scroll
   canvas.style.marginBottom = `${-Math.max(0, shownCss - office.clientHeight)}px`
-  draw()
+  if (paint) draw()
 }
 
 /** How far the floor has scrolled under the canvas, in device pixels. */
@@ -514,11 +536,13 @@ function artTransform() {
   const k = layout.scale * dpr()
   ctx.setTransform(k, 0, 0, k, 0, -scrolled())
   ctx.imageSmoothingEnabled = false
+  ctx.filter = 'none'
 }
 
 function cssTransform() {
   const d = dpr()
   ctx.setTransform(d, 0, 0, d, 0, -scrolled())
+  ctx.filter = 'none'
 }
 
 function drawBuilding(p) {
@@ -643,7 +667,12 @@ function movers() {
   }
   for (const seat of layout.seats) {
     const w = walkers.get(seat.key)
-    if (w?.path.length) person(seat.key, w.x, w.y, (at) => walker(at, seat.staff, tick, onTheMove(w), w.left))
+    if (w && (w.path.length || w.mode.startsWith('teleport'))) {
+      person(seat.key, w.x, w.y, (at) => {
+        walker(at, seat.staff, tick, onTheMove(w), w.left)
+        if (w.mode.startsWith('teleport')) teleportEffect(at, 0, 0, w.warp, w.mode)
+      })
+    }
   }
   for (const [key, v] of visitors) {
     if (v.mode !== 'seated' && !(v.wait > 0)) person(key, v.x, v.y, (at) => walker(at, v.spec, tick, onTheMove(v), v.left, roleColor(v.spec.role)))
@@ -786,10 +815,53 @@ function stepWalkers() {
       walkers.get(seat.key),
       { spot: spotOf.get(seat.key), activity: activityOf.get(seat.key) ?? null, home: homeOf(seat), primed: scenePrimed },
       (from, to) => walkPath(`walk:${seat.key}`, from, to),
-      WALK_SPEED
+      WALK_SPEED,
+      { out: TELEPORT_OUT_FRAMES, in: TELEPORT_IN_FRAMES }
     )
     if (w) walkers.set(seat.key, w)
     else walkers.delete(seat.key)
+  }
+}
+
+/** A hard-edged pixel portal that makes a break-to-desk return read as a teleport, not a walk. */
+function teleportEffect(p, x, y, frame, mode) {
+  const departure = mode === 'teleport-out'
+  const progress = departure ? frame : TELEPORT_IN_FRAMES - 1 - frame
+  const radius = 4 + Math.min(8, progress)
+  const span = 2 + Math.min(4, Math.floor(progress / 2))
+  const cx = x + 4
+  const cy = y + 7
+  const color = departure ? C.blue : C.green
+  const highlight = C.white
+  const left = cx - radius
+  const right = cx + radius
+  const top = cy - radius
+  const bottom = cy + radius
+
+  // Four opaque corner brackets expand on departure and contract on arrival. No alpha or blur is
+  // used, so this stays crisp at the panel's pixel scale and cannot flash the whole canvas.
+  p(left, top, span, 1, color)
+  p(right - span + 1, top, span, 1, color)
+  p(left, bottom, span, 1, color)
+  p(right - span + 1, bottom, span, 1, color)
+  p(left, top, 1, span, color)
+  p(right, top, 1, span, color)
+  p(left, bottom - span + 1, 1, span, color)
+  p(right, bottom - span + 1, 1, span, color)
+
+  // A square pulse makes the midpoint legible even when the worker is small on a tall panel.
+  if (progress % 3 === 1) {
+    p(cx - 1, top + 2, 2, radius * 2 - 3, highlight)
+    p(left + 2, cy - 1, radius * 2 - 3, 2, highlight)
+  }
+
+  // Fixed, opaque fragments give the effect a discrete pixel-art rhythm rather than a fade.
+  if (progress % 2 === 0) {
+    p(left - 2, cy - 1, 2, 2, highlight)
+    p(right + 1, cy + 2, 2, 1, highlight)
+  } else {
+    p(cx - 1, top - 2, 2, 1, highlight)
+    p(cx + 3, bottom + 1, 1, 2, highlight)
   }
 }
 
@@ -1307,7 +1379,13 @@ function loftPeople() {
       m.base = chair.y + 11 + (chair.facing ? 0.5 : -0.5)
       m.paint = (p) => sitting(p, chair, seat.staff, tick, talking)
     }
-    else m.paint = (p) => standing(p, x, y, seat.staff, tick, onTheMove(w), w.left)
+    else m.paint = (p) => {
+      // Let the portal own the last departure frames and first arrival frames. The hard cut makes
+      // the disappearance/reappearance readable without introducing opacity or a screen-wide flash.
+      const visible = w.mode === 'teleport-out' ? w.warp < 5 : w.warp >= 3
+      if (visible) standing(p, x, y, seat.staff, tick, onTheMove(w), w.left)
+      if (w.mode.startsWith('teleport')) teleportEffect(p, x, y, w.warp, w.mode)
+    }
     people.push(m)
   }
   for (const [key, v] of visitors) {
@@ -1349,6 +1427,10 @@ function drawLoftScene() {
 }
 
 function draw() {
+  // The animation timer can run before the first worker snapshot and before ResizeObserver has
+  // established a layout. Keep that startup frame blank instead of throwing every 125 ms and
+  // leaving the renderer with a black canvas.
+  if (!snapshot || !layout.building) return
   if (loft()) {
     drawLoftScene()
     drawSelection()
@@ -1388,7 +1470,12 @@ function draw() {
     if (kind === 'lounge') paint = () => lounger(at, seat.staff, tick, w.activity.pose)
     else if (kind === 'booth') paint = () => walker(at, seat.staff, tick, false, w.left, null, 'phone')
     else if (kind === 'foosball') paint = () => walker(at, seat.staff, tick, false, w.left, null, w.spot.back ? 'playBack' : 'play')
-    else paint = () => walker(at, seat.staff, tick, onTheMove(w), w.left)
+    else {
+      paint = () => {
+        walker(at, seat.staff, tick, onTheMove(w), w.left)
+        if (w.mode.startsWith('teleport')) teleportEffect(at, 0, 0, w.warp, w.mode)
+      }
+    }
     scene.push({ base: Math.round(w.y) + 15, inBooth: kind === 'booth', paint })
   }
   for (const [key, v] of visitors) {
@@ -1459,7 +1546,9 @@ function renderStats() {
   const parts = [plural(layout.teamCount ?? layout.rooms.length, 'team'), `${layout.seats.length} staff`, `${busy} busy`]
   if (specialists) parts.push(plural(specialists, 'specialist'))
   if (needYou) parts.push(`${needYou} need you`)
-  document.getElementById('stats').textContent = parts.join(' · ')
+  const text = parts.join(' · ')
+  const stats = document.getElementById('stats')
+  if (stats.textContent !== text) stats.textContent = text
 }
 
 // How the last "Open in Orca" went for the selected seat: 'opening', or the reason it failed.
@@ -1556,14 +1645,19 @@ function noteChanges() {
 
 function apply(next) {
   snapshot = next
-  resize()
-  noteChanges()
+  // Establish the new layout before updating the sidebar text. The final resize below measures
+  // the office after those DOM changes, so a snapshot cannot cause one paint at the old height and
+  // another after #stats or #message changes the flex layout.
+  layout = fitLayout()
   renderStats()
   renderDetail()
-  refreshCard()
   if (layout.seats.length === 0) {
     showMessage(next.error ? `Could not read the agents: ${next.error}` : 'The office is empty. Start an agent and it gets a desk.')
   } else showMessage(null)
+  resize(false)
+  noteChanges()
+  draw()
+  refreshCard()
 }
 
 // ---- input and loops -------------------------------------------------------------------------
@@ -1709,12 +1803,12 @@ canvas.addEventListener('click', (event) => {
   draw()
 })
 
-/** Switches the look: everyone is placed afresh in the new office, nobody walks across. */
-function setTheme(next) {
-  if (!THEMES.includes(next) || next === theme) return
-  theme = next
+/** Switches the layout: everyone is placed afresh in the new office, nobody walks across. */
+function setLayout(next) {
+  if (!LAYOUTS.includes(next) || next === layoutTheme) return
+  layoutTheme = next
   try {
-    localStorage.setItem(THEME_KEY, theme)
+    localStorage.setItem(THEME_KEY, layoutTheme)
   } catch {
     // kept for this session only
   }
@@ -1731,11 +1825,37 @@ function setTheme(next) {
   resize()
 }
 
-function renderThemes() {
-  for (const button of document.querySelectorAll('#themes button')) button.setAttribute('aria-pressed', String(button.dataset.theme === theme))
+function setDark(next) {
+  const value = next === true || next === 'true'
+  if (value === dark) return
+  dark = value
+  try {
+    localStorage.setItem(DARK_KEY, String(dark))
+  } catch {
+    // kept for this session only
+  }
+  applyDark()
+  renderThemes()
+  renderDetail()
+  layout.dark = dark
+  draw()
 }
 
-for (const button of document.querySelectorAll('#themes button')) button.addEventListener('click', () => setTheme(button.dataset.theme))
+function renderThemes() {
+  for (const button of document.querySelectorAll('#themes button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.layout === layoutTheme))
+  }
+  const darkButton = document.querySelector('#dark-toggle button')
+  if (darkButton) {
+    darkButton.setAttribute('aria-pressed', String(dark))
+    darkButton.textContent = dark ? '☾' : '☀'
+    darkButton.setAttribute('aria-label', dark ? 'Use light appearance' : 'Use dark appearance')
+    darkButton.setAttribute('title', dark ? 'Use light appearance' : 'Use dark appearance')
+  }
+}
+
+for (const button of document.querySelectorAll('#themes button')) button.addEventListener('click', () => setLayout(button.dataset.layout))
+document.querySelector('#dark-toggle button')?.addEventListener('click', () => setDark(!dark))
 renderThemes()
 
 async function poll() {

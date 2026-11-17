@@ -99,13 +99,27 @@ test(`everyone stands and every break spot is on open floor, ${look}`, () => {
   for (const spot of [...c.spots, ...c.foos]) assert.ok(clear(spot), `a ${spot.kind} spot is inside furniture`)
 })
 
-test('the hangout sits halfway, with rooms above and below it', () => {
+test('the leisure area is below every Loft workstation bay', () => {
   const floors = Object.fromEntries(['a', 'b', 'c', 'd'].map((r) => [r, [1, 2, 3, 4].map((n) => desk(r, n))]))
   const layout = layoutLoft(office(floors), LOFT_MIN_W * 3, 3, helpers)
-  const above = layout.rooms.filter((r: any) => r.y < layout.common.y).length
-  const below = layout.rooms.filter((r: any) => r.y > layout.common.y).length
-  assert.equal(above, 2)
-  assert.equal(below, 2)
+  assert.ok(layout.rooms.every((r: any) => r.y + r.h < layout.common.y), 'the leisure area follows the work deck')
+  assert.equal(layout.lines.at(-1), layout.common.y, 'the leisure bulkhead follows the leisure area')
+})
+
+test('the fixed-height leisure module can dock to the bottom of a tall panel', () => {
+  const layout = layoutLoft(office({ a: [desk('a', 1)] }), LOFT_MIN_W * 3, 3, helpers, 400)
+  assert.equal(layout.artH, 400)
+  assert.equal(layout.common.y + layout.common.h + 6, 400)
+})
+
+test('a tall office centers a single workstation row vertically', () => {
+  const compact = layoutLoft(office({ a: [desk('a', 1)] }), LOFT_MIN_W * 3, 3, helpers)
+  const tall = layoutLoft(office({ a: [desk('a', 1)] }), LOFT_MIN_W * 3, 3, helpers, 400)
+  const room = tall.rooms[0]
+  const island = room.islands[0]
+  assert.ok(room.h > compact.rooms[0].h)
+  assert.equal(island.y - room.y, 14 + Math.floor((room.h - compact.rooms[0].h) / 2))
+  assert.equal(tall.common.y + tall.common.h + 6, 400)
 })
 
 test('on a narrow floor the hangout leaves the walkway by the right wall clear', () => {
@@ -120,7 +134,7 @@ test('on a narrow floor the hangout leaves the walkway by the right wall clear',
 
 test('specialists on both sides of neighbouring desks never sit on each other or on a chair', () => {
   const layout = layoutLoft(office({ a: [1, 2, 3, 4, 5, 6].map((n) => desk('a', n)) }), 330 * 3, 3, helpers)
-  const front = layout.seats.filter((s: any) => s.front).sort((a: any, b: any) => a.cx - b.cx)
+  const front = layout.seats.filter((s: any) => s.front && s.row0 === 0).sort((a: any, b: any) => a.cx - b.cx)
   for (let i = 0; i + 1 < front.length; i++) {
     const right = front[i].stools[0]
     const left = front[i + 1].stools[1]

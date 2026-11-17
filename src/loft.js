@@ -12,7 +12,7 @@ import { C, XMAS, christmasTree, festive, festiveHeadgear, glyph, holidayLights,
 
 const INK = '#1d1b26'
 export const OUTER = 4 // the side walls
-const WALL = 34 // the window band across the top
+const WALL = 68 // the window band across the top: two regular window bays
 const SPINE = 24 // a column and the walkway beside it, where the curtain lines open
 // Furniture is sized to the people: a monitor about one and a half shoulders wide, a desk wide
 // enough for its agent and a specialist on a stool at either side.
@@ -106,7 +106,7 @@ const HALF_BLOCK = 58 // a half island (one row of three) with its team's name o
  * islands of six; two small teams share a room. Rooms go two to a row when the floor is wide
  * enough, else one; each row of rooms ends in a curtain line; the hangout sits halfway.
  */
-export function layoutLoft(snapshot, cssW, scale, helpers) {
+export function layoutLoft(snapshot, cssW, scale, helpers, targetH = null) {
   const artW = Math.max(LOFT_MIN_W, Math.floor(cssW / scale))
   const x0 = OUTER + 2
   const floorW = artW - OUTER * 2 - 4
@@ -136,44 +136,35 @@ export function layoutLoft(snapshot, cssW, scale, helpers) {
   for (let i = 0; i < small.length; i += 2) roomPlans.push(small.slice(i, i + 2).map((t) => t[0]))
   const contentH = (plan) => plan.reduce((n, t) => n + t.h, 0)
 
-  // Rows of rooms, then the row that puts the hangout halfway: half the rooms above it, half below,
-  // so nobody walks far for a coffee.
+  // Rows of rooms. When the panel is taller than the natural floor plan, the extra height is
+  // distributed across these rows so each office can center its workstations vertically.
   const bands = []
   for (let b = 0; b < roomPlans.length; b += cols) {
     const band = roomPlans.slice(b, b + cols)
     bands.push({ band, h: 26 + Math.max(...band.map(contentH)) })
   }
-  let split = bands.length
-  let best = Infinity
-  for (let k = 1; k <= bands.length; k++) {
-    const above = bands.slice(0, k).reduce((n, b) => n + b.h, 0)
-    const below = bands.slice(k).reduce((n, b) => n + b.h, 0)
-    if (Math.abs(above - below) < best) {
-      best = Math.abs(above - below)
-      split = k
-    }
-  }
-
+  const naturalWorkH = bands.reduce((sum, band) => sum + band.h, 0)
+  const naturalCommon = hangout(x0, WALL + naturalWorkH + 8, floorW)
+  const naturalH = naturalCommon.y + naturalCommon.h + 6
+  const extraWorkH = Math.max(0, (targetH ?? naturalH) - naturalH)
+  const perBand = bands.length ? Math.floor(extraWorkH / bands.length) : 0
+  const remainder = bands.length ? extraWorkH % bands.length : 0
+  bands.forEach((band, i) => {
+    band.h += perBand + (i < remainder ? 1 : 0)
+  })
   const rooms = []
   const seats = []
   const lines = [] // curtain lines: the floor row each one stands on
   let common = null
   let top = WALL
-  for (let b = 0; b <= bands.length; b++) {
-    if (b === split) {
-      common = hangout(x0, top, floorW)
-      top = common.y + common.h
-      // the rooms below get their back curtain, far enough down that its column stays clear
-      if (b < bands.length) {
-        top += cols === 1 ? 26 : 46
-        lines.push(top)
-      }
-    }
-    if (b === bands.length) break
+  // The work deck occupies the upper part of the Loft. The leisure module is always last, so the
+  // window, workstation bays and commons read as a single top-to-bottom composition.
+  for (let b = 0; b < bands.length; b++) {
     const bottom = top + bands[b].h
     bands[b].band.forEach((plan, c) => {
       const room = { x: colX[c], y: top, w: colW, h: bottom - top, name: plan.map((t) => t.floor.repo).join(' · '), first: top === WALL, islands: [] }
-      let cursor = top
+      const contentOffset = Math.floor((room.h - (26 + contentH(plan))) / 2)
+      let cursor = top + contentOffset
       for (const team of plan) {
         const ref = { name: team.floor.repo }
         const isles = []
@@ -232,14 +223,14 @@ export function layoutLoft(snapshot, cssW, scale, helpers) {
       room.drawers = drawerBlocks(room)
       rooms.push(room)
     })
-    // a curtain line when anything follows, another row of rooms or the hangout
-    if (b < bands.length - 1 || split === bands.length) {
-      lines.push(bottom)
-      top = bottom
-    } else top = bottom - 22
+    lines.push(bottom)
+    top = bottom
   }
-
-  const h = top + 6
+  common = hangout(x0, top + 8, floorW)
+  let h = common.y + common.h + 6
+  // The last curtain is the leisure area's own bulkhead. Keep it attached to the module when the
+  // module docks to the bottom of a tall panel; the earlier lines remain workstation separators.
+  if (lines.length) lines[lines.length - 1] = common.y
   const building = { w: artW, h, doorY: common.doorY, x0, floorW, spineX, cols }
   return { theme: 'loft', artW, artH: h, scale, building, rooms, seats, common, lines, teamCount: teams.length }
 }
@@ -790,11 +781,11 @@ function island(p, g, isl, world) {
     g.drawImage(mat(cell ? cell.unit ?? cell.key : `empty|${x}|${y}|${i}`, IW - 6, ID - 4), x + (i % 3) * IW + 3, y + row * ID + 2)
   })
   // a computer only where a worktree has its desk; a spare desk is just the desk
-  if (!half) for (let i = 0; i < 3; i++) if (cells[i]) monitorBack(p, x + i * IW + MON_X, y + 2, staffed(cells[i]), t)
+  if (!half) for (let i = 0; i < 3; i++) monitorBack(p, x + i * IW + MON_X, y + 2, staffed(cells[i]), t)
   for (let i = 0; i < 3; i++) {
     const cell = cells[half ? i : i + 3]
     const seat = staffed(cell)
-    if (cell) monitorFront(p, x + i * IW + MON_X, y + row0 - 4, seat, t)
+    monitorFront(p, x + i * IW + MON_X, y + row0 - 4, seat, t)
     if (cell) deskProp(p, x + i * IW, y + row0 + 5, cell.unit ?? cell.key)
     frontAgent(p, x + i * IW + HALF, y + row0 + 6, seat?.staff, t, seat && world.away(seat))
     kicks(seat)
@@ -803,50 +794,45 @@ function island(p, g, isl, world) {
 
 // ---- the hall ------------------------------------------------------------------------------------
 
-function buildingWindow(p, artW, spineX) {
-  p(0, 0, artW, WALL, '#dde5ea')
-  // the brick building across the garden, with its white band and windows
-  p(0, 8, artW, 10, '#dbc38f')
-  for (let y = 9; y < 18; y += 2) p(0, y, artW, 1, '#ceb47f')
-  p(0, 16, artW, 5, '#e8e8e3')
-  for (let x = 8; x < artW; x += 24) p(x, 17, 12, 3, '#5d6670')
-  // the garden: grasses, and a couple of birches turning yellow
-  p(0, 21, artW, WALL - 21, '#9db07c')
-  for (let i = 0; i < artW / 3; i++) {
-    const h = hash(i * 6151)
-    p(h % artW, 21 + ((h >>> 9) % (WALL - 24)), 1, 2 + ((h >>> 4) % 3), ['#c9b56a', '#7e9a5c', '#b08a52', '#d8c98a'][(h >>> 14) % 4])
-  }
-  for (const tx of [Math.round(artW * 0.2), Math.round(artW * 0.63)]) {
-    p(tx, 5, 1, 18, '#f1f0ea')
-    p(tx, 9, 1, 1, '#4b4a5e')
-    p(tx, 15, 1, 1, '#4b4a5e')
-    for (let i = 0; i < 26; i++) {
-      const h = hash(tx * 97 + i)
-      p(tx - 6 + (h % 13), 2 + ((h >>> 8) % 14), 2, 2, ['#d6c04a', '#9bb54c', '#e2b23c'][(h >>> 16) % 3])
+function buildingWindow(p, artW, spineX, night = false) {
+  const sky = night ? '#101d3c' : '#72b5e6'
+  const horizon = night ? '#1a3150' : '#9db07c'
+  p(0, 0, artW, WALL, sky)
+  if (night) {
+    for (let i = 0; i < artW / 3; i++) {
+      const h = hash(i * 6151 + 17)
+      p(h % artW, 5 + ((h >>> 9) % 39), (h & 3) === 0 ? 2 : 1, 1, ['#d9e8ff', '#8fb9e5', '#f7d889'][(h >>> 14) % 3])
+    }
+    const mx = Math.max(16, Math.min(artW - 26, Math.round(artW * 0.72)))
+    p(mx, 12, 11, 11, '#f4e4a8')
+    p(mx + 2, 10, 7, 2, '#f4e4a8')
+    p(mx + 2, 23, 7, 2, '#f4e4a8')
+    p(mx + 7, 13, 5, 9, sky)
+  } else {
+    // Pixel clouds make the doubled-height window read as open sky instead of another room wall.
+    for (const [x, y, w] of [[12, 10, 26], [Math.round(artW * 0.48), 24, 34], [artW - 46, 8, 28]]) {
+      p(x, y + 4, w, 4, '#f4f7f2')
+      p(x + 6, y + 2, Math.max(8, w - 12), 2, '#ffffff')
+      p(x + 12, y, Math.max(6, w - 24), 2, '#ffffff')
+    }
+    for (let i = 0; i < artW / 4; i++) {
+      const h = hash(i * 6151)
+      p(h % artW, 47 + ((h >>> 9) % (WALL - 50)), 1, 2 + ((h >>> 4) % 3), ['#c9b56a', '#7e9a5c', '#b08a52', '#d8c98a'][(h >>> 14) % 4])
     }
   }
-  // the steel frame
-  const FR = '#4d5a53'
+  p(0, 46, artW, WALL - 46, horizon)
+  // Two horizontal mullions and the concrete columns retain the Loft's industrial identity.
+  const FR = night ? '#40557c' : '#4d5a53'
   p(0, 0, artW, 1, FR)
-  p(0, 13, artW, 1, FR)
-  p(0, 24, artW, 1, FR)
+  for (const y of [22, 45, WALL - 3]) p(0, y, artW, 1, FR)
   for (let x = 6; x < artW; x += 20) p(x, 0, 1, WALL - 3, FR)
-  // concrete columns with their rusty edges, one over the walkway
-  for (const [cx, cw] of [
-    [0, 6],
-    [spineX, 10],
-    [artW - 6, 6]
-  ]) {
-    p(cx, 0, cw, WALL - 3, '#b4afa5')
-    for (let i = 0; i < 6; i++) {
-      const h = hash(cx * 13 + i)
-      p(cx + 1 + (h % Math.max(1, cw - 2)), (h >>> 8) % (WALL - 4), 1, 1, '#9f998e')
-    }
-    p(cx, 0, 1, WALL - 3, '#c0632e')
-    p(cx + cw - 1, 0, 1, WALL - 3, '#c0632e')
+  for (const [cx, cw] of [[0, 6], [spineX, 10], [artW - 6, 6]]) {
+    p(cx, 0, cw, WALL - 3, night ? '#293b61' : '#b4afa5')
+    p(cx, 0, 1, WALL - 3, night ? '#6b82aa' : '#c0632e')
+    p(cx + cw - 1, 0, 1, WALL - 3, night ? '#6b82aa' : '#c0632e')
   }
-  p(0, WALL - 3, artW, 3, '#8e9590')
-  p(0, WALL, artW, 1, '#6f7672')
+  p(0, WALL - 3, artW, 3, night ? '#1c2c4d' : '#8e9590')
+  p(0, WALL, artW, 1, night ? '#0b1428' : '#6f7672')
 }
 
 /** Polished concrete: soft blotches and a sheen from the windows. */
@@ -1264,7 +1250,7 @@ const backgrounds = new Map() // floor geometry -> the hall's static floor and w
 
 function background(layout) {
   const { artW, building } = layout
-  const key = JSON.stringify([artW, building.h, building.doorY, building.spineX, layout.common.bed, layout.common.things.filter((t) => t.kind === 'rug')])
+  const key = JSON.stringify([layout.dark === true, artW, building.h, building.doorY, building.spineX, layout.common.bed, layout.common.things.filter((t) => t.kind === 'rug')])
   let canvas = backgrounds.get(key)
   if (canvas) return canvas
   canvas = new OffscreenCanvas(artW, building.h)
@@ -1273,7 +1259,7 @@ function background(layout) {
     g.fillStyle = c
     g.fillRect(x, y, w, h)
   }
-  buildingWindow(p, artW, building.spineX)
+  buildingWindow(p, artW, building.spineX, layout.dark === true)
   concrete(p, artW, WALL + 1, building.h)
   walls(p, artW, building.h, building.doorY)
   for (const t of layout.common.things) if (t.kind === 'rug') rug(p, t)

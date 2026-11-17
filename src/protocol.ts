@@ -3,6 +3,12 @@ export {}
 
 export type StaffState = 'working' | 'monitoring' | 'waiting' | 'blocked' | 'done' | 'idle'
 
+/** The selectable office layout; Dark is an appearance attribute, not a layout. */
+export type OfficeLayout = 'brick' | 'loft'
+
+/** Persisted panel appearance, split so every layout can be rendered in either appearance. */
+export type OfficeAppearance = { layout: OfficeLayout; dark: boolean }
+
 /** A subagent: a specialist the agent called in, seated on a stool at its desk. */
 export type Specialist = {
   id: string
