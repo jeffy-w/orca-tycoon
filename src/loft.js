@@ -503,7 +503,12 @@ const mats = new Map()
 function mat(key, w, h) {
   const id = `${key}|${w}|${h}`
   let canvas = mats.get(id)
-  if (canvas) return canvas
+  if (canvas) {
+    // the latest used last, so the one to go is the one off screen the longest
+    mats.delete(id)
+    mats.set(id, canvas)
+    return canvas
+  }
   let s = hashText(key) || 1
   const r = () => {
     s ^= s << 13
@@ -522,7 +527,9 @@ function mat(key, w, h) {
       g.fillRect(i, j, 1, 1)
     }
   }
-  if (mats.size > 400) mats.clear()
+  // Only the desks on screen are drawn, far fewer than this, so a big office never repaints its
+  // mats every frame the way clearing them all did once it had more desks than the cache held.
+  if (mats.size >= 400) mats.delete(mats.keys().next().value)
   mats.set(id, canvas)
   return canvas
 }
@@ -1343,15 +1350,21 @@ export function drawLoft(ctx, layout, world) {
   for (const m of world.people) if (m.kind !== 'booth') scene.push({ base: m.base, paint: () => m.paint(p) })
   if (world.palu) scene.push({ base: world.palu.base - 0.5, paint: () => world.palu.paint(p) })
   scene.sort((a, b) => a.base - b.base)
-  for (const item of scene) item.paint()
+  // `view` is the band of floor rows the panel shows; a thing standing well outside it cannot
+  // reach into it, so a big office only paints what is on screen
+  const { view } = world
+  for (const item of scene) if (!view || (item.base > view.y0 - 8 && item.base < view.y1 + 90)) item.paint()
 
   const s = layout.scale
+  // a sign or nameplate is a line of text around its row: one well off screen is not measured
+  const shown = (y, bottom = y) => !view || (bottom > view.y0 - 12 && y < view.y1 + 12)
   for (const room of layout.rooms) {
     const y = room.first ? 2 : room.y - 25
-    world.drawText(room.name, (room.x + 8) * s, (y + 5) * s, (signW(room) - 6) * s, C.white, { weight: 700 })
+    if (shown(y + 5)) world.drawText(room.name, (room.x + 8) * s, (y + 5) * s, (signW(room) - 6) * s, C.white, { weight: 700 })
   }
   const size = Math.max(9, Math.min(12, Math.round(s * 3.4)))
   for (const seat of layout.seats) {
+    if (!shown(seat.island.y + (seat.front ? seat.row0 + 25 : 5))) continue
     const label = world.nameplate(seat)
     // a chip sized to the label, never wider than the desk: on the back of a front-row chair, which
     // stays put while its agent is on a break, and on the back of a back-row monitor
@@ -1361,6 +1374,7 @@ export function drawLoft(ctx, layout, world) {
   }
   for (const room of layout.rooms) {
     for (const isl of room.islands) {
+      if (!shown(isl.y - 10, isl.y + ID * 2 + 25)) continue
       // two small teams in one room: each island carries its team's name
       if (isl.team) world.drawText(isl.team, (isl.x + 1) * s, (isl.y - 10) * s, ISL_W * s, C.white, { weight: 700, size, chip: '#23212b' })
       // a sleeping worktree's desk keeps its nameplate, dimmed

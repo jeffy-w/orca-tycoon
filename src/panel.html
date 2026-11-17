@@ -74,9 +74,15 @@
         width: 100%;
         overflow: auto;
       }
-      #plan {
-        display: block;
+      /* The whole office's size, for scrolling; the canvas over it is only as big as the panel and
+         stays put while the floor scrolls under it. */
+      #floor {
         margin: 0 auto;
+      }
+      #plan {
+        position: sticky;
+        top: 0;
+        display: block;
         image-rendering: pixelated;
         cursor: pointer;
       }
@@ -165,7 +171,7 @@
     </header>
     <div class="empty" id="message" hidden></div>
     <main id="office">
-      <canvas id="plan"></canvas>
+      <div id="floor"><canvas id="plan"></canvas></div>
     </main>
     <section id="detail" hidden></section>
     <div id="tooltip"></div>

@@ -1,7 +1,7 @@
 // The loft's seating rules and its floor plan: seats stay put while others come and go, a
 // family sits together, and everyone has room to stand and walk.
 import { assert, test } from 'orca/testing'
-import { LOFT_MIN_W, loftGeometry, layoutLoft } from './loft.js'
+import { LOFT_MIN_W, drawLoft, loftGeometry, layoutLoft } from './loft.js'
 
 type Staff = { id: string; state: string; specialists: unknown[] }
 type Desk = { id: string; name: string; label: string; parentId: string | null; staff: Staff[] }
@@ -136,4 +136,70 @@ test('a desk keeps its own key, for its mat and things, when its worktree wakes 
   const awake = layoutLoft(office({ k: [desk('k', 1), desk('k', 2)] }), 330 * 3, 3, helpers)
   const seat = awake.seats.find((s: any) => s.desk.id === 'k-2')
   assert.equal(seat.unit, vacant.key)
+})
+
+test('a big office paints only the rows on screen, the same as before, and each desk mat once', () => {
+  const g = globalThis as any
+  const offscreen = g.OffscreenCanvas
+  let mats = 0
+  const anything = () => new Proxy({} as any, { get: (t, k) => (k in t ? t[k] : () => {}) })
+  g.OffscreenCanvas = class {
+    width: number
+    height: number
+    constructor(w: number, h: number) {
+      mats++
+      this.width = w
+      this.height = h
+    }
+    getContext() {
+      return anything()
+    }
+  }
+  try {
+    // one agent and 500 sleeping worktrees: far more desks than a panel shows, and than the mats kept
+    const desks = [desk('huge', 0), ...Array.from({ length: 500 }, (_, n) => desk('huge', n + 1, null, true))]
+    const layout = layoutLoft(office({ huge: desks }), 330 * 2, 2, helpers)
+    assert.ok(layout.artH > 3000, 'the office should be much taller than the panel')
+    let painted: string[] = []
+    const ctx: any = anything()
+    ctx.fillRect = (x: number, y: number, w: number, h: number) => painted.push(`${x},${y},${w},${h},${ctx.fillStyle}`)
+    ctx.drawImage = (img: any, x: number, y: number) => painted.push(`img ${x},${y},${img.width},${img.height}`)
+    const frame = (view?: { y0: number; y1: number }) => {
+      painted = []
+      drawLoft(ctx, layout, {
+        tick: 0,
+        away: () => false,
+        seatedAt: () => [],
+        people: [],
+        sittersAt: new Set(),
+        palu: null,
+        bowls: () => {},
+        nameplate: () => '',
+        drawText: () => {},
+        view
+      })
+      return painted
+    }
+    const whole = frame()
+    // a band of desks, and one across the hangout
+    const views = [
+      { y0: 1200, y1: 1500 },
+      { y0: layout.common.y - 40, y1: layout.common.y + layout.common.h + 40 }
+    ]
+    for (const view of views) {
+      const inView = (op: string) => {
+        const [, y, , h] = op.replace('img ', '').split(',').map(Number)
+        return y < view.y1 && y + h > view.y0
+      }
+      const culled = frame(view)
+      const made = mats
+      assert.deepEqual(frame(view), culled)
+      assert.equal(mats, made, 'the next frame painted the desk mats again')
+      assert.ok(culled.length * 4 < whole.length, 'the rows off screen were painted too')
+      assert.ok(culled.filter(inView).length > 100, `nothing painted in rows ${view.y0} to ${view.y1}`)
+      assert.deepEqual(culled.filter(inView), whole.filter(inView), `rows ${view.y0} to ${view.y1} look different`)
+    }
+  } finally {
+    g.OffscreenCanvas = offscreen
+  }
 })

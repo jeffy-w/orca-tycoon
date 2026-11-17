@@ -138,7 +138,9 @@ the same rate Orca's phone app uses, and draws one canvas at 8 frames a second. 
 drawn in code, so the plugin loads no assets and makes no network requests. The office fills the
 panel: it is drawn at the biggest whole pixel scale at which the whole building fits, and the
 corridors between rooms widen so the bottom wall reaches the panel's bottom edge. Only an office
-too crowded to fit at the smallest scale scrolls.
+too crowded to fit at the smallest scale scrolls, and then each frame paints only what is on screen.
+People find their way round the furniture with `src/walking.js`, which spreads the search over
+frames, so a big office where many people get up at once never holds up the panel.
 
 ### Permissions
 
