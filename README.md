@@ -2,7 +2,7 @@
 
 Your coding agents, as tiny pixel staff in an office you can watch.
 
-![The Office Tycoon office in the Loft: five teams at islands of desks behind navy curtains, an agent that just finished saying so in a speech bubble, and the hangout in the middle with phone booths, a coffee counter, a sofa on a pink rug, a chat at the round table, foosball and Palú asleep in his bed](docs/office.png)
+![The Office Tycoon office in the Loft: five teams at islands of desks behind navy curtains, an agent that just finished saying so in a speech bubble, and the hangout along the bottom with phone booths, a coffee counter, a sofa on a pink rug, foosball and Palú asleep in his bed](docs/office.png)
 
 Office Tycoon is a plugin for [Orca](https://github.com/stablyai/orca), the desktop app for running
 many coding agents in parallel git worktrees. It draws every agent on your machine, its SSH targets and the
