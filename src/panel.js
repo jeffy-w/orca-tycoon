@@ -480,7 +480,7 @@ function fitLoft(cssW, cssH, perPx) {
   return layoutLoft(snapshot, cssW - SCROLLBAR, minScale, helpers, Math.floor(cssH / minScale))
 }
 
-function resize() {
+function resize(paint = true) {
   layout = fitLayout()
   layout.dark = dark
   const w = Math.round(layout.artW * layout.scale * dpr())
@@ -493,7 +493,7 @@ function resize() {
   }
   canvas.style.width = `${w / dpr()}px`
   canvas.style.height = `${h / dpr()}px`
-  draw()
+  if (paint) draw()
 }
 
 // ---- drawing ---------------------------------------------------------------------------------
@@ -1606,7 +1606,9 @@ function renderStats() {
   const parts = [plural(layout.teamCount ?? layout.rooms.length, 'team'), `${layout.seats.length} staff`, `${busy} busy`]
   if (specialists) parts.push(plural(specialists, 'specialist'))
   if (needYou) parts.push(`${needYou} need you`)
-  document.getElementById('stats').textContent = parts.join(' · ')
+  const text = parts.join(' · ')
+  const stats = document.getElementById('stats')
+  if (stats.textContent !== text) stats.textContent = text
 }
 
 // How the last "Open in Orca" went for the selected seat: 'opening', or the reason it failed.
@@ -1703,14 +1705,19 @@ function noteChanges() {
 
 function apply(next) {
   snapshot = next
-  resize()
-  noteChanges()
+  // Establish the new layout before updating the sidebar text. The final resize below measures
+  // the office after those DOM changes, so a snapshot cannot cause one paint at the old height and
+  // another after #stats or #message changes the flex layout.
+  layout = fitLayout()
   renderStats()
   renderDetail()
-  refreshCard()
   if (layout.seats.length === 0) {
     showMessage(next.error ? `Could not read the agents: ${next.error}` : 'The office is empty. Start an agent and it gets a desk.')
   } else showMessage(null)
+  resize(false)
+  noteChanges()
+  draw()
+  refreshCard()
 }
 
 // ---- input and loops -------------------------------------------------------------------------
