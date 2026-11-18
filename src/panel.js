@@ -50,7 +50,19 @@ import {
   workstation
 } from './sprites.js'
 import { LOFT_MIN_W, loftGeometry, drawLoft, layoutLoft, lounging, outlinedAt, sitting, standing } from './loft.js'
-import { breakWalk, onTheMove, routePlanner, stepToward, visitorWalk, walkGrid, walkerShown } from './walking.js'
+import {
+  breakWalk,
+  deskStayLabel,
+  deskStayOf,
+  nextDeskStay,
+  onTheMove,
+  routePlanner,
+  staysAtDesk,
+  stepToward,
+  visitorWalk,
+  walkGrid,
+  walkerShown
+} from './walking.js'
 
 const POLL_MS = 3000
 const FRAME_MS = 125
@@ -148,6 +160,16 @@ try {
 }
 const loft = () => layoutTheme === 'loft'
 
+// How long an agent that just finished stays at its desk before it walks to the commons, in
+// seconds. The button beside the appearance switch cycles the choices; the pick is kept.
+const STAY_KEY = 'office-tycoon.desk-stay'
+let deskStay = deskStayOf(null)
+try {
+  deskStay = deskStayOf(localStorage.getItem(STAY_KEY))
+} catch {
+  // no storage in this frame: the default for this session
+}
+
 function applyDark() {
   document.documentElement.dataset.dark = String(dark)
   document.body?.setAttribute('data-dark', String(dark))
@@ -191,6 +213,7 @@ let layout = { artW: 0, artH: 0, scale: 3, building: null, rooms: [], seats: [],
 let selected = null // seat key, or a specialist's visitor key (`seat key|specialist id`)
 let tick = 0
 const lastState = new Map() // seat key -> state, to pop a bubble when it changes
+const doneAt = new Map() // seat key -> when the panel saw its agent finish at its desk
 const bubbles = new Map() // seat key -> { text, until }
 const walkers = new Map() // seat key -> { x, y, path, mode: 'out' | 'away' | 'back' | 'teleport-*' }
 const visitors = new Map() // specialist key -> { spec, x, y, path, mode: 'in' | 'seated' | 'out' }
@@ -746,7 +769,10 @@ function slotOf(key, now) {
 function assignBreaks(common) {
   const now = Date.now()
   const pools = { lounge: common.sofa, coffee: common.spots, foosball: common.foos, booth: common.booths, table: common.table ?? [] }
-  const onBreak = layout.seats.filter((s) => AWAY_STATES.has(s.staff.state) || LOUNGE_STATES.has(s.staff.state))
+  // one that just finished stays at its desk a while first
+  const onBreak = layout.seats.filter(
+    (s) => (AWAY_STATES.has(s.staff.state) || LOUNGE_STATES.has(s.staff.state)) && !staysAtDesk(doneAt.get(s.key), now, deskStay)
+  )
   const onKeys = new Set(onBreak.map((s) => s.key))
   for (const key of assigned.keys()) if (!onKeys.has(key)) assigned.delete(key)
 
@@ -1650,9 +1676,15 @@ function noteChanges() {
       else if (state === 'waiting') text = 'Need you!'
       else if (state === 'blocked') text = 'Stuck!'
       if (text) bubbles.set(seat.key, { text, until: now + BUBBLE_MS, kind: state === 'waiting' ? 'waiting' : 'speech' })
+      // Finished at its desk: it stays there a while. One that finished out on a break (it was
+      // waiting on a background job) is not called back to its desk only to leave again.
+      if (state === 'done' && !walkers.has(seat.key)) doneAt.set(seat.key, now)
     }
+    if (state !== 'done') doneAt.delete(seat.key)
     lastState.set(seat.key, state)
   }
+  const seated = new Set(layout.seats.map((s) => s.key))
+  for (const key of doneAt.keys()) if (!seated.has(key)) doneAt.delete(key)
   primed = true
 }
 
@@ -1854,6 +1886,16 @@ function setDark(next) {
   draw()
 }
 
+function setDeskStay(next) {
+  deskStay = deskStayOf(next)
+  try {
+    localStorage.setItem(STAY_KEY, String(deskStay))
+  } catch {
+    // kept for this session only
+  }
+  renderThemes()
+}
+
 function renderThemes() {
   for (const button of document.querySelectorAll('#themes button')) {
     button.setAttribute('aria-pressed', String(button.dataset.layout === layoutTheme))
@@ -1865,10 +1907,22 @@ function renderThemes() {
     darkButton.setAttribute('aria-label', dark ? 'Use light appearance' : 'Use dark appearance')
     darkButton.setAttribute('title', dark ? 'Use light appearance' : 'Use dark appearance')
   }
+  const stayButton = document.querySelector('#desk-stay button')
+  if (stayButton) {
+    const label = deskStayLabel(deskStay)
+    const hint =
+      deskStay > 0
+        ? `A finished agent stays at its desk for ${label} before its break. Click to change.`
+        : 'A finished agent leaves its desk for its break at once. Click to change.'
+    stayButton.textContent = `⏱ ${label}`
+    stayButton.setAttribute('aria-label', hint)
+    stayButton.setAttribute('title', hint)
+  }
 }
 
 for (const button of document.querySelectorAll('#themes button')) button.addEventListener('click', () => setLayout(button.dataset.layout))
 document.querySelector('#dark-toggle button')?.addEventListener('click', () => setDark(!dark))
+document.querySelector('#desk-stay button')?.addEventListener('click', () => setDeskStay(nextDeskStay(deskStay)))
 renderThemes()
 
 async function poll() {
