@@ -69,9 +69,8 @@ The Layout control picks the floor plan and the panel remembers it. The separate
 control toggles Dark for any layout. The office opens in the Loft with Dark off.
 
 - **Loft** shows the office from the front and above, like a doll's house with its front wall
-  taken off. It is set up like a real office in an old concrete hall: a double-height window that
-  changes between blue sky and a moonlit star field, one-row workstation bays with their monitors
-  always in place, and a fixed-height hangout docked at the bottom.
+  taken off. It is set up like a real office in an old concrete hall: a double-height window onto
+  the street, one-row workstation bays, and a fixed-height hangout docked at the bottom.
 - **Brick** is the flat office seen from straight above, as in the screenshot below and the
   pictures further down.
 - **Dark** is an appearance attribute rather than a layout. It adds the low-light, low-saturation
