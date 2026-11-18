@@ -1363,7 +1363,15 @@ function loftPeople() {
     const x = Math.round(w.x)
     const y = Math.round(w.y)
     const kind = w.mode === 'away' ? w.activity?.kind ?? null : null
-    const m = { key: seat.key, kind, spot: w.spot, base: y + 15 }
+    const m = {
+      key: seat.key,
+      kind,
+      spot: w.spot,
+      base: y + 15,
+      // Keep a worker visible while crossing room furniture and curtain lines. Once it reaches
+      // the commons, normal depth sorting resumes so furniture can occlude it naturally.
+      moving: w.path.length > 0 || w.mode.startsWith('teleport')
+    }
     if (kind === 'lounge') {
       m.base = (w.spot.sofa ? w.spot.sofa.y + 13 : y + 13) + 0.5
       m.paint = (p) => lounging(p, x, y, seat.staff, tick, w.activity.pose)
@@ -1392,7 +1400,13 @@ function loftPeople() {
     if (v.mode === 'seated' || v.wait > 0) continue
     const x = Math.round(v.x)
     const y = Math.round(v.y)
-    people.push({ key, kind: null, base: y + 15, paint: (p) => standing(p, x, y, v.spec, tick, onTheMove(v), v.left, roleColor(v.spec.role)) })
+    people.push({
+      key,
+      kind: null,
+      base: y + 15,
+      moving: onTheMove(v),
+      paint: (p) => standing(p, x, y, v.spec, tick, onTheMove(v), v.left, roleColor(v.spec.role))
+    })
   }
   return people
 }

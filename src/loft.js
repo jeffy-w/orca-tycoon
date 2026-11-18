@@ -1333,13 +1333,23 @@ export function drawLoft(ctx, layout, world) {
   }
   scene.push({ base: c.bowls.y + 4, paint: () => world.bowls(p, c.bowls) })
   for (const room of layout.rooms) for (const d of room.drawers ?? []) scene.push({ base: d.base, paint: () => drawers(p, d, t) })
-  for (const m of world.people) if (m.kind !== 'booth') scene.push({ base: m.base, paint: () => m.paint(p) })
+  // A walker crossing a room must stay visible while it passes behind the static island/curtain
+  // layers. Settled people remain in the normal depth-sorted scene, so sofas and tables still
+  // occlude them naturally once they arrive.
+  const moving = []
+  for (const m of world.people) {
+    if (m.kind === 'booth') continue
+    if (m.moving) moving.push(m)
+    else scene.push({ base: m.base, paint: () => m.paint(p) })
+  }
   if (world.palu) scene.push({ base: world.palu.base - 0.5, paint: () => world.palu.paint(p) })
   scene.sort((a, b) => a.base - b.base)
   // `view` is the band of floor rows the panel shows; a thing standing well outside it cannot
   // reach into it, so a big office only paints what is on screen
   const { view } = world
   for (const item of scene) if (!view || (item.base > view.y0 - 8 && item.base < view.y1 + 90)) item.paint()
+  moving.sort((a, b) => a.base - b.base)
+  for (const m of moving) m.paint(p)
 
   const s = layout.scale
   // a sign or nameplate is a line of text around its row: one well off screen is not measured

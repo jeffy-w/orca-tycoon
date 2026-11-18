@@ -66,6 +66,9 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? 
 export type ServerAnswer = { environment: string; raw: unknown }
 
 const RUNTIME_HOST = 'runtime:'
+// Orca can remove a completed session from `worktree ps` before the panel's next poll. Keep its
+// last seat long enough for the done state to reach the panel and walk the agent to the commons.
+export const DONE_AGENT_GRACE_MS = 30_000
 
 /**
  * The paired servers a local `worktree ps` names as not covered, by environment id. Orca's own
@@ -357,7 +360,12 @@ const worktreesOf = (raw: unknown): Row[] => {
  * join the team of their project like any other, their ids prefixed with the server so a desk
  * there never collides with one here, and they carry the selector "Open in Orca" goes through.
  */
-export function toSnapshot(raw: unknown, at: number, servers: ServerAnswer[] = []): OfficeSnapshot {
+export function toSnapshot(
+  raw: unknown,
+  at: number,
+  servers: ServerAnswer[] = [],
+  previous: OfficeSnapshot | null = null
+): OfficeSnapshot {
   type Placed = { w: Row; environment: string | null }
   const all: Placed[] = [
     ...worktreesOf(raw).map((w) => ({ w, environment: null })),
@@ -366,10 +374,32 @@ export function toSnapshot(raw: unknown, at: number, servers: ServerAnswer[] = [
   const idOf = (id: string | null, environment: string | null) => (id && environment ? `${environment}|${id}` : id)
   const repoOf = (w: Row) => str(w.repo) ?? 'Other'
   const busy = (w: Row) => Array.isArray(w.agents) && w.agents.length > 0
+  const previousAt = previous?.at ?? 0
+  const canRemember = previousAt > 0 && at >= previousAt && at - previousAt <= DONE_AGENT_GRACE_MS
+  const previousDesks = new Map(
+    (previous?.floors ?? []).flatMap((floor) => floor.desks.map((desk) => [desk.id, desk] as const))
+  )
+  const remembered = (w: Row, environment: string | null): Staff[] => {
+    if (!canRemember || busy(w)) return []
+    const id = idOf(String(w.worktreeId ?? ''), environment) ?? ''
+    const desk = previousDesks.get(id)
+    if (!desk) return []
+    return desk.staff.map((staff) => ({
+      ...staff,
+      state: 'done',
+      line: staff.said ?? 'All done!',
+      since: at,
+      specialists: []
+    }))
+  }
   // A project with a live agent brings all its worktrees that are not archived, the sleeping ones
   // too, so the loft can give each its desk; a project nobody works in stays off the floor.
   const open = all.filter(({ w }) => w.isArchived !== true)
-  const working = new Set(open.filter(({ w }) => busy(w)).map(({ w }) => repoOf(w)))
+  const working = new Set(
+    open
+      .filter(({ w, environment }) => busy(w) || remembered(w, environment).length > 0)
+      .map(({ w }) => repoOf(w))
+  )
   const live = open.filter(({ w }) => working.has(repoOf(w)))
   const nameOf = (w: Row) => str(w.displayName) ?? str(w.branch)?.replace(/^refs\/heads\//, '') ?? 'workspace'
   // names several desks in one project share tell those desks apart from nothing
@@ -385,6 +415,7 @@ export function toSnapshot(raw: unknown, at: number, servers: ServerAnswer[] = [
   const floors = new Map<string, Desk[]>()
   for (const { w, environment } of live) {
     const agents = busy(w) ? (w.agents as Row[]) : []
+    const rememberedStaff = busy(w) ? [] : remembered(w, environment)
     const repo = repoOf(w)
     const branch = str(w.branch)?.replace(/^refs\/heads\//, '') ?? null
     const name = nameOf(w)
@@ -400,7 +431,7 @@ export function toSnapshot(raw: unknown, at: number, servers: ServerAnswer[] = [
       environment,
       host: environment ? str((w.environment as Row | null)?.name) ?? environment : null,
       label: labelOf(null, name, deskGeneric),
-      staff: agents.map((row) => toStaff(row, name, generic))
+      staff: busy(w) ? agents.map((row) => toStaff(row, name, generic)) : rememberedStaff
     }
     const list = floors.get(repo) ?? []
     list.push(desk)
@@ -492,7 +523,7 @@ export default function activate(orca: OrcaWorkerApi): void {
         orca.log(`worktree ps on ${environment} failed: ${error instanceof Error ? error.message : String(error)}`)
       )
       environments = pairedEnvironments(local)
-      last = toSnapshot(local, Date.now(), servers)
+      last = toSnapshot(local, Date.now(), servers, last)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       orca.log(`worktree ps failed: ${message}`)
