@@ -474,6 +474,16 @@ export function breakWalk(w, { spot, activity, home, primed }, route, speed, tel
   return w.mode === 'back' ? undefined : w
 }
 
+/**
+ * Whether the person is drawn this frame. The portal owns the last frames of a teleport out and
+ * the first frames of a teleport in; anyone walking or standing (who never counted `warp`) shows.
+ */
+export function walkerShown(w) {
+  if (w.mode === 'teleport-out') return w.warp < 5
+  if (w.mode === 'teleport-in') return w.warp >= 3
+  return true
+}
+
 /** A frame of the teleport home: out at the spot, then in at the desk; undefined once it is there. */
 function warpHome(w, home, teleport) {
   w.warp++

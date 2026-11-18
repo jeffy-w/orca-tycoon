@@ -50,7 +50,7 @@ import {
   workstation
 } from './sprites.js'
 import { LOFT_MIN_W, loftGeometry, drawLoft, layoutLoft, lounging, outlinedAt, sitting, standing } from './loft.js'
-import { breakWalk, onTheMove, routePlanner, stepToward, visitorWalk, walkGrid } from './walking.js'
+import { breakWalk, onTheMove, routePlanner, stepToward, visitorWalk, walkGrid, walkerShown } from './walking.js'
 
 const POLL_MS = 3000
 const FRAME_MS = 125
@@ -1390,8 +1390,7 @@ function loftPeople() {
     else m.paint = (p) => {
       // Let the portal own the last departure frames and first arrival frames. The hard cut makes
       // the disappearance/reappearance readable without introducing opacity or a screen-wide flash.
-      const visible = w.mode === 'teleport-out' ? w.warp < 5 : w.warp >= 3
-      if (visible) standing(p, x, y, seat.staff, tick, onTheMove(w), w.left)
+      if (walkerShown(w)) standing(p, x, y, seat.staff, tick, onTheMove(w), w.left)
       if (w.mode.startsWith('teleport')) teleportEffect(p, x, y, w.warp, w.mode)
     }
     people.push(m)
