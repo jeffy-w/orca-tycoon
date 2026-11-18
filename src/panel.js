@@ -1288,9 +1288,14 @@ function drawPalu(base = painter(ctx)) {
   else paluLie(at, tick, true, palu.restLeft)
 }
 
+/** Whether the seat's agent just finished and sits up at its desk, ready for the next task. */
+function awaitingTask(seat) {
+  return seat.staff.state === 'done' && staysAtDesk(doneAt.get(seat.key), Date.now(), deskStay)
+}
+
 function drawSeat(seat) {
   const p = painter(ctx, seat.x, seat.y)
-  person(p, seat.staff, tick, walkers.has(seat.key))
+  person(p, seat.staff, tick, walkers.has(seat.key), awaitingTask(seat))
 }
 
 function drawText(text, cssX, cssY, maxW, color, { weight = 600, align = 'left', size = 12, chip = null } = {}) {
@@ -1447,6 +1452,7 @@ function drawLoftScene() {
   drawLoft(ctx, layout, {
     tick,
     away: (seat) => walkers.has(seat.key),
+    awake: awaitingTask,
     seatedAt: (seat) =>
       [...visitors]
         .filter(([key, v]) => v.mode === 'seated' && key.startsWith(`${seat.key}|`))
@@ -1484,7 +1490,7 @@ function draw() {
   // desks: people first, then the desk over their laps, then monitors and hands
   for (const seat of layout.seats) drawSeat(seat)
   for (const seat of layout.seats) desk(painter(ctx, seat.x - 2, seat.y), DESK_W)
-  for (const seat of layout.seats) workstation(painter(ctx, seat.x, seat.y), seat.staff, tick, walkers.has(seat.key), Boolean(seat.desk.environment))
+  for (const seat of layout.seats) workstation(painter(ctx, seat.x, seat.y), seat.staff, tick, walkers.has(seat.key), Boolean(seat.desk.environment), awaitingTask(seat))
   // stools at the end of each desk, then whoever is sitting on them
   for (const seat of layout.seats) for (const at of seat.stools) stool(painter(ctx, at.x, at.y))
   for (const v of visitors.values()) {
