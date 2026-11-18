@@ -829,6 +829,13 @@ function assignBreaks(common) {
   return spotOf
 }
 
+/** Whether someone at `at` (the top left of its 9 x 16 figure) has its feet in the commons. */
+function inCommons(common, at) {
+  const x = at.x + 4
+  const feet = at.y + 15
+  return x >= common.x && x <= common.x + common.w && feet >= common.y && feet <= common.y + common.h
+}
+
 function stepWalkers() {
   const common = layout.common
   if (!common) return
@@ -842,7 +849,7 @@ function stepWalkers() {
       { spot: spotOf.get(seat.key), activity: activityOf.get(seat.key) ?? null, home: homeOf(seat), primed: scenePrimed },
       (from, to) => walkPath(`walk:${seat.key}`, from, to),
       WALK_SPEED,
-      { out: TELEPORT_OUT_FRAMES, in: TELEPORT_IN_FRAMES }
+      { out: TELEPORT_OUT_FRAMES, in: TELEPORT_IN_FRAMES, inCommons: (at) => inCommons(common, at) }
     )
     if (w) walkers.set(seat.key, w)
     else walkers.delete(seat.key)

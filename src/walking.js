@@ -436,8 +436,10 @@ function walkOn(who, speed) {
  * drawn doing one thing at another thing's place; until then it waits where it is (`planning`).
  * Returns the walk, or undefined while it sits at its desk or once it is back there.
  *
- * With `teleport` (`{ out, in }`, frames each way), an agent called back from its spot does not walk:
- * it fades out there (`teleport-out`), then appears at its desk (`teleport-in`), counting `warp`.
+ * With `teleport` (`{ out, in, inCommons }`, frames each way), an agent called back from its spot
+ * does not walk: it fades out there (`teleport-out`), then appears at its desk (`teleport-in`),
+ * counting `warp`. So does one called back on its way to a spot, where `inCommons(w)` says it
+ * stands in the commons already: only one still among the desks walks back.
  * Called out again meanwhile, it walks to the spot from wherever it stands.
  */
 export function breakWalk(w, { spot, activity, home, primed }, route, speed, teleport = null) {
@@ -458,7 +460,7 @@ export function breakWalk(w, { spot, activity, home, primed }, route, speed, tel
   } else if (spot) {
     w.planning = false
     w.activity = activity
-  } else if (teleport && w.mode === 'away') {
+  } else if (teleport && (w.mode === 'away' || (w.mode === 'out' && teleport.inCommons?.(w)))) {
     Object.assign(w, { path: [], mode: 'teleport-out', warp: 0, activity: null, planning: false })
     return w
   } else if (w.mode !== 'back') {

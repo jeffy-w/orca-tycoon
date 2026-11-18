@@ -409,6 +409,41 @@ test('with teleport, an agent called back from a break fades out at its spot and
   assert.equal(breakWalk(w, back, route, 0, teleport), undefined)
 })
 
+test('called back on its way to a spot, an agent teleports from the commons and walks from among the desks', () => {
+  const home = { x: 30, y: 10 }
+  const spot = { x: 30, y: 90 }
+  const teleport = { out: 2, in: 2, inCommons: (at: { y: number }) => at.y >= 50 }
+  const route = (from: { x: number; y: number }, to: { x: number; y: number }) => [{ ...to }]
+  const out = { spot, activity: { kind: 'coffee' }, home, primed: true }
+  const back = { spot: undefined, activity: null, home, primed: true }
+
+  // still among the desks: it turns round and walks
+  const near = breakWalk(undefined, out, route, 10, teleport)
+  breakWalk(near, out, route, 10, teleport)
+  assert.equal(near.mode, 'out')
+  assert.equal(near.y < 50, true)
+  breakWalk(near, back, route, 10, teleport)
+  assert.equal(near.mode, 'back')
+
+  // in the commons, not yet at its spot: it goes from where it stands
+  const far = breakWalk(undefined, out, route, 10, teleport)
+  while (far.y < 60) breakWalk(far, out, route, 10, teleport)
+  assert.equal(far.mode, 'out')
+  const at = [far.x, far.y]
+  breakWalk(far, back, route, 10, teleport)
+  assert.equal(far.mode, 'teleport-out')
+  assert.deepEqual([far.x, far.y], at)
+  assert.deepEqual(far.path, [])
+
+  // moving from one spot to another in the commons
+  const moved = breakWalk(undefined, { ...out, primed: false }, route, 10, teleport)
+  assert.equal(moved.mode, 'away')
+  breakWalk(moved, { ...out, spot: { x: 80, y: 90 } }, route, 10, teleport)
+  assert.equal(moved.mode, 'out')
+  breakWalk(moved, back, route, 10, teleport)
+  assert.equal(moved.mode, 'teleport-out')
+})
+
 test('called out again mid-teleport, the agent walks to its spot from where it stands', () => {
   const spot = { x: 10, y: 50 }
   const home = { x: 30, y: 10 }
