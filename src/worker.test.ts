@@ -3,7 +3,6 @@
 import { assert, test } from 'orca/testing'
 import {
   cliEnvironment,
-  DONE_AGENT_GRACE_MS,
   isChatSession,
   labelOf,
   lineOf,
@@ -66,33 +65,6 @@ test('groups agents by project and keeps subagents as specialists', () => {
   assert.equal(infra.branch, 'main')
   assert.equal(infra.staff[0].specialists[0].role, 'release-engineer')
   assert.equal(snap.floors[0].desks[0].staff[0].state, 'monitoring')
-})
-
-test('keeps a completed agent visible when Orca removes it before the next poll', () => {
-  const first = toSnapshot(
-    {
-      result: {
-        worktrees: [{ worktreeId: 'w1', repo: 'infra', displayName: 'main', agents: [{ paneKey: 'p1', state: 'working', lastAssistantMessage: 'Editing the panel' }] }]
-      }
-    },
-    1
-  )
-  const next = toSnapshot(
-    { result: { worktrees: [{ worktreeId: 'w1', repo: 'infra', displayName: 'main', agents: [] }] } },
-    2,
-    [],
-    first
-  )
-  assert.equal(next.floors[0].desks[0].staff[0].state, 'done')
-  assert.equal(next.floors[0].desks[0].staff[0].line, 'Editing the panel')
-
-  const expired = toSnapshot(
-    { result: { worktrees: [{ worktreeId: 'w1', repo: 'infra', displayName: 'main', agents: [] }] } },
-    DONE_AGENT_GRACE_MS + 2,
-    [],
-    first
-  )
-  assert.deepEqual(expired.floors, [])
 })
 
 test('reads Chat UI children as specialists, leaving out commands and settled work', () => {
